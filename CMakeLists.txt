@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(metaverse-tools-editor)
+project(sundry)
 
 # Add include directories
 include_directories("C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.37.32822\\include")
