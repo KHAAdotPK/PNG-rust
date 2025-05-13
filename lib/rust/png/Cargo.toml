@@ -1,0 +1,12 @@
+[package]
+name = "png" # Name of the crate/package, why? because it has its own cargo.toml file
+               # In crate/package where this crate is used as an external dependency 
+               # For example in a crate/package where this crate is used as an external crate there should be a line...
+               # under dependencies section of Cargo.toml file: argsv = { path = "./argsv-rust/lib/rust/argsv/" }
+version = "0.2.0"
+edition = "2021"
+build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

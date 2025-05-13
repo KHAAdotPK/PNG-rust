@@ -8,7 +8,7 @@ use crate::constants::LENGTH_OF_CRC_FIELD;
 
 mod constants;
 
-#[link(name = "sundry", kind = "dylib")]
+#[link(name = "png", kind = "dylib")]
 /* Native function call */
 extern {
  
