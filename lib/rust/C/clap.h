@@ -6,6 +6,8 @@
 //#include <stdio.h>
 #include <limits.h>
 
+#include "./../../../zlib/zlib.h"
+
 #ifndef CLAP_HH
 #define CLAP_HH
 

@@ -4,7 +4,7 @@ A Rust crate to create and edit PNG files.
 ## Integration as a Dependency
 To use PNG-rust in your project, follow these steps:
 
-1. **Clone the Repository:** First, clone the PNG-rust repository into your project's `lib` directory:
+1. **Clone the Repository**: First, clone the PNG-rust repository into your project's `lib` directory:
 ```bash
 # From your project root directory
 mkdir -p lib
@@ -12,7 +12,14 @@ cd lib
 git clone https://github.com/KHAAdotPK/PNG-rust.git
 ```
 
-2. **Add as Dependency:** In your Cargo.toml file, add the following dependency:
+2. **Build zlib Dependency**: Run the included PULL.cmd script to clone and build zlib:
+```bash
+cd lib/PNG-rust
+PULL.cmd
+```
+This will clone the zlib repository and build it with CMake, creating the necessary Debug build files.
+
+3. **Add as Dependency**: In your project'sCargo.toml file, add the following dependency:
 ```toml
 [dependencies]
 png = { path = "./lib/PNG-rust/lib/rust/png/" }
