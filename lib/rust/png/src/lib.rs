@@ -3,16 +3,26 @@
     Q@khaa.pk
  */
 
-use std::collections::LinkedList; 
-use crate::constants::LENGTH_OF_CRC_FIELD;
-
 mod constants;
+
+use std::collections::LinkedList; 
+use libc::{c_uchar, c_ulong};
+
+// Define the Rust equivalent of the C struct
+#[repr(C)]
+pub struct DeflatedData {
+    size: c_ulong,
+    data: *mut c_uchar,
+}
+
+pub type InflatedData = DeflatedData;
 
 #[link(name = "png", kind = "dylib")]
 /* Native function call */
 extern {
  
      fn big_endian_read_u32(ptr: *const u8) -> u32;     
+     fn in_flate(data: *const u8, data_size: usize) -> *mut InflatedData;
 }
 
 #[derive(Clone)]
@@ -48,7 +58,25 @@ impl Chunk {
                 crc: Vec::new(),                
             }
         }
-    }        
+    }
+    
+    // This method will call big_endian_read_u32 and return the length of the chunk
+    pub fn get_length (&self) -> u32 {
+
+        unsafe { big_endian_read_u32 (self.length.as_ptr()) }
+    }
+
+    // This method will convert the type_name vector to a string and return it
+    pub fn get_type_name (&self) -> String {
+
+        std::str::from_utf8(&self.type_name).unwrap().to_string() //unsafe { big_endian_read_u32 (self.type_name.as_ptr()) }
+    }
+
+    // This method will take Chunk::data and inflate and return it
+    pub fn get_inflated_data (&self) -> *mut InflatedData {
+        
+        unsafe { in_flate(self.data.as_ptr(), self.get_length() as usize ) }
+    }    
 }
 
 #[derive(Clone)]
@@ -78,12 +106,12 @@ impl Png {
             
                 let chunk = Chunk::new(
 
-                    (&data[index .. (index + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(data[index .. (index + 4)].as_ptr()) } as usize + LENGTH_OF_CRC_FIELD)]).to_vec()
+                    (&data[index .. (index + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(data[index .. (index + 4)].as_ptr()) } as usize + constants::LENGTH_OF_CRC_FIELD)]).to_vec()
                 );
 
                 head.push_back(chunk);
             
-                index = index + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(data[index .. (index + 4)].as_ptr()) } as usize + LENGTH_OF_CRC_FIELD;
+                index = index + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(data[index .. (index + 4)].as_ptr()) } as usize + constants::LENGTH_OF_CRC_FIELD;
             }
 
             Self {
@@ -112,12 +140,12 @@ impl Png {
             
             let chunk = Chunk::new(
 
-                (&data[index .. (index + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(data[index .. (index + 4)].as_ptr()) } as usize + LENGTH_OF_CRC_FIELD)]).to_vec()
+                (&data[index .. (index + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(data[index .. (index + 4)].as_ptr()) } as usize + constants::LENGTH_OF_CRC_FIELD)]).to_vec()
             );
 
             head.push_back(chunk);
             
-            index = index + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(data[index .. (index + 4)].as_ptr()) } as usize + LENGTH_OF_CRC_FIELD;
+            index = index + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(data[index .. (index + 4)].as_ptr()) } as usize + constants::LENGTH_OF_CRC_FIELD;
         } */
        
         /*Self {
@@ -125,5 +153,10 @@ impl Png {
             signature,                                    
             chunks: head,
         }*/
+    }
+
+    pub fn get_inflated_data (&self, data: &[u8]) -> *mut InflatedData {
+
+        unsafe { in_flate(data.as_ptr(), data.len()) }
     }
 }
