@@ -122,7 +122,48 @@ impl Chunk {
     pub fn get_inflated_data (&self) -> *mut InflatedData {
         
         unsafe { in_flate(self.data.as_ptr(), self.get_length() as usize ) }
-    }    
+    }
+    
+    //////////////////////////////////////////////////////
+    // Block containing IHDR related methods begin here //   
+    //////////////////////////////////////////////////////
+    pub fn get_width (&self) -> u32 {
+
+        unsafe { big_endian_read_u32 (self.data.as_ptr()) }
+    }
+
+    pub fn get_height (&self) -> u32 {
+       
+        unsafe { big_endian_read_u32 (self.data.as_ptr().wrapping_add(4)) }
+    }
+
+    pub fn get_bit_depth (&self) -> u8 {
+
+        self.data[8]
+    }
+
+    pub fn get_color_type (&self) -> u8 {
+
+        self.data[9]
+    }
+
+    pub fn get_compression_method (&self) -> u8 {
+
+        self.data[10]
+    }
+
+    pub fn get_filter_method (&self) -> u8 {
+
+        self.data[11]
+    }
+
+    pub fn get_interlace_method (&self) -> u8 {
+
+        self.data[12]
+    }
+    ////////////////////////////////////////////////////
+    // Block containing IHDR related methods end here //   
+    ////////////////////////////////////////////////////
 }
 
 #[derive(Clone)]
