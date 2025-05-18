@@ -15,6 +15,52 @@ pub struct DeflatedData {
     data: *mut c_uchar,
 }
 
+// Add Drop trait implementation for automatic cleanup
+
+impl DeflatedData {
+
+    pub fn new (size: c_ulong, data: *mut c_uchar) -> Self {
+
+        Self {
+
+            size,
+            data,
+        }
+    }
+
+    // Free the allocated memory
+    unsafe fn free(&mut self) {
+        if !self.data.is_null() {
+            // Convert back to a Vec before dropping to properly deallocate
+            let _ = Vec::from_raw_parts(self.data, self.size as usize, self.size as usize);
+            // Mark as freed to prevent double-free
+            self.data = std::ptr::null_mut();
+            self.size = 0;
+        }
+    }
+
+    pub fn len(&self) -> c_ulong {
+        self.size        
+    }
+}
+
+// Separate Drop implementation
+impl Drop for DeflatedData {
+    fn drop(&mut self) {
+        unsafe {
+            self.free();
+
+            self.size = 0;
+            self.data = std::ptr::null_mut();            
+        }
+
+        /*
+            Uncomment the following line to print a message when DeflatedData is dropped
+        */
+        //println!("DeflatedData dropped");
+    }
+}
+
 pub type InflatedData = DeflatedData;
 
 #[link(name = "png", kind = "dylib")]
