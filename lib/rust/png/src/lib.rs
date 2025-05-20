@@ -8,17 +8,47 @@ mod constants;
 use std::collections::LinkedList; 
 use libc::{c_uchar, c_ulong};
 
-// Define the Rust equivalent of the C struct
+#[link(name = "png", kind = "dylib")]
+/* Native function call */
+extern {
+ 
+     fn big_endian_read_u32(ptr: *const u8) -> u32;     
+     fn in_flate(data: *const u8, data_size: usize) -> *mut InflatedData;
+}
+
+/// A C-compatible structure representing deflated (compressed) data.
+///
+/// This struct matches the memory layout of its C counterpart and is used for FFI operations.
+/// It contains a pointer to compressed data and its size in bytes.
+///
+/// # Safety
+/// - The `data` pointer must either be null or point to valid memory allocated by the same allocator
+///   that Rust uses (typically the system allocator).
+/// - The `size` must accurately reflect the allocated memory size.
 #[repr(C)]
 pub struct DeflatedData {
     size: c_ulong,
     data: *mut c_uchar,
 }
 
+/// Type alias for inflated (decompressed) data.
+///
+/// Uses the same memory representation as `DeflatedData` but semantically represents decompressed content.
+pub type InflatedData = DeflatedData;
+
 // Add Drop trait implementation for automatic cleanup
 
 impl DeflatedData {
 
+    /// Creates a new `DeflatedData` instance.
+    ///
+    /// # Arguments
+    /// * `size` - The length of the data buffer in bytes
+    /// * `data` - A pointer to the raw data (may be null)
+    ///
+    /// # Safety
+    /// - The caller must ensure the pointer is valid for the given size
+    /// - If not null, the pointer must be properly aligned and point to initialized memory
     pub fn new (size: c_ulong, data: *mut c_uchar) -> Self {
 
         Self {
@@ -27,8 +57,12 @@ impl DeflatedData {
             data,
         }
     }
-
-    // Free the allocated memory
+    
+    /// Safely deallocates the contained data buffer.
+    ///
+    /// # Safety
+    /// - Must only be called when the struct owns the data pointer
+    /// - After calling, the struct becomes invalid and should not be used
     unsafe fn free(&mut self) {
         if !self.data.is_null() {
             // Convert back to a Vec before dropping to properly deallocate
@@ -39,12 +73,21 @@ impl DeflatedData {
         }
     }
 
+    /// Returns the size of the contained data in bytes.
+    ///
+    /// Note: Returns 0 if the data has been freed or was never allocated.
     pub fn len(&self) -> c_ulong {
         self.size        
     }
 }
 
-// Separate Drop implementation
+/// Automatic cleanup implementation for `DeflatedData`.
+///
+/// Ensures proper memory deallocation when the struct goes out of scope.
+///
+/// # Safety
+/// - The drop handler is automatically called by Rust's ownership system
+/// - After drop completes, the struct becomes invalid
 impl Drop for DeflatedData {
     fn drop(&mut self) {
         unsafe {
@@ -61,16 +104,17 @@ impl Drop for DeflatedData {
     }
 }
 
-pub type InflatedData = DeflatedData;
-
-#[link(name = "png", kind = "dylib")]
-/* Native function call */
-extern {
- 
-     fn big_endian_read_u32(ptr: *const u8) -> u32;     
-     fn in_flate(data: *const u8, data_size: usize) -> *mut InflatedData;
-}
-
+/// Represents a PNG chunk containing metadata or image data.
+///
+/// Each PNG chunk consists of:
+/// - 4-byte length (big-endian)
+/// - 4-byte type name (ASCII)
+/// - Variable-length data payload
+/// - 4-byte CRC checksum
+///
+/// # Safety
+/// - Uses `unsafe` operations for byte manipulation and inflation
+/// - Assumes proper PNG chunk structure in input data
 #[derive(Clone)]
 pub struct Chunk {
      
@@ -82,6 +126,16 @@ pub struct Chunk {
 
 impl Chunk {
 
+    /// Creates a new `Chunk` from raw byte data.
+    ///
+    /// # Arguments
+    /// * `data` - Byte slice containing a complete PNG chunk
+    ///
+    /// # Panics
+    /// - If input data doesn't contain a valid chunk structure
+    ///
+    /// # Safety
+    /// - Uses unsafe pointer arithmetic to parse chunk structure
     pub fn new (data: Vec<u8>) -> Self {
 
         if data.len() > 0 {
@@ -106,19 +160,29 @@ impl Chunk {
         }
     }
     
-    // This method will call big_endian_read_u32 and return the length of the chunk
+    /// Returns the chunk's data length as a big-endian u32.
     pub fn get_length (&self) -> u32 {
 
         unsafe { big_endian_read_u32 (self.length.as_ptr()) }
     }
-
-    // This method will convert the type_name vector to a string and return it
+  
+    /// Returns the chunk type as an ASCII string.
+    ///
+    /// # Panics
+    /// - If type name contains invalid UTF-8 sequences
     pub fn get_type_name (&self) -> String {
 
         std::str::from_utf8(&self.type_name).unwrap().to_string() //unsafe { big_endian_read_u32 (self.type_name.as_ptr()) }
     }
-
-    // This method will take Chunk::data and inflate and return it
+    
+    /// Decompresses the chunk's data using zlib inflation.
+    ///
+    /// # Returns
+    /// Raw pointer to decompressed data (must be properly freed by caller)
+    ///
+    /// # Safety
+    /// - Returns a raw pointer requiring manual memory management
+    /// - Assumes valid zlib-compressed data
     pub fn get_inflated_data (&self) -> *mut InflatedData {
         
         unsafe { in_flate(self.data.as_ptr(), self.get_length() as usize ) }
@@ -127,36 +191,44 @@ impl Chunk {
     //////////////////////////////////////////////////////
     // Block containing IHDR related methods begin here //   
     //////////////////////////////////////////////////////
+
+    /// Returns image width from IHDR chunk (big-endian).
     pub fn get_width (&self) -> u32 {
 
         unsafe { big_endian_read_u32 (self.data.as_ptr()) }
     }
 
+    /// Returns image height from IHDR chunk (big-endian).
     pub fn get_height (&self) -> u32 {
        
         unsafe { big_endian_read_u32 (self.data.as_ptr().wrapping_add(4)) }
     }
 
+    /// Returns bit depth from IHDR chunk.
     pub fn get_bit_depth (&self) -> u8 {
 
         self.data[8]
     }
 
+    /// Returns color type from IHDR chunk.
     pub fn get_color_type (&self) -> u8 {
 
         self.data[9]
     }
 
+    /// Returns compression method from IHDR chunk.
     pub fn get_compression_method (&self) -> u8 {
 
         self.data[10]
     }
 
+    /// Returns filter method from IHDR chunk.
     pub fn get_filter_method (&self) -> u8 {
 
         self.data[11]
     }
 
+    /// Returns interlace method from IHDR chunk.
     pub fn get_interlace_method (&self) -> u8 {
 
         self.data[12]
@@ -166,6 +238,11 @@ impl Chunk {
     ////////////////////////////////////////////////////
 }
 
+/// Represents a complete PNG image file.
+///
+/// Contains:
+/// - 8-byte PNG signature
+/// - Linked list of chunks (IHDR, PLTE, IDAT, IEND, etc.)
 #[derive(Clone)]
 pub struct Png {
     
@@ -175,6 +252,36 @@ pub struct Png {
 
 impl Png {
 
+    /// Creates a new `Png` instance by parsing raw PNG file data.
+    ///
+    /// # Arguments
+    /// * `data` - A byte vector containing the complete PNG file data
+    ///
+    /// # Returns
+    /// A new `Png` struct containing:
+    /// - The 8-byte PNG signature
+    /// - A linked list of parsed chunks (IHDR, IDAT, IEND, etc.)
+    ///
+    /// # Panics
+    /// - Will not panic but returns empty structure if input is shorter than PNG signature
+    ///
+    /// # Safety
+    /// - Uses unsafe operations for big-endian number parsing
+    /// - Assumes valid PNG file structure in input data
+    ///
+    /// # Example
+    /// ```rust
+    /// let png_data = std::fs::read("image.png").unwrap();
+    /// let png = Png::new(png_data);
+    /// ```
+    ///
+    /// # Implementation Notes
+    /// 1. Validates minimum data length (8 bytes for signature)
+    /// 2. Extracts PNG signature (first 8 bytes)
+    /// 3. Iteratively parses chunks:
+    ///    - Each chunk has: length (4B), type (4B), data (variable), CRC (4B)
+    ///    - Uses big-endian format for length fields
+    /// 4. Builds linked list of chunks
     pub fn new (data: Vec<u8>) -> Self {
 
         let mut head: LinkedList<Chunk> = LinkedList::new();
@@ -241,7 +348,19 @@ impl Png {
             chunks: head,
         }*/
     }
-   
+
+    /// Returns the PNG signature (first 8 bytes).
+    pub fn get_signature (&self) -> Vec<u8> {
+
+        self.signature.clone()
+    }
+
+    /// Returns a reference to the list of chunks.
+    pub fn get_chunks (&self) -> &LinkedList<Chunk> {
+
+        &self.chunks
+    }
+       
     /// Collects and concatenates all `IDAT` chunk data from the PNG file.
     ///
     /// This method iterates through all chunks in the PNG and extracts the raw byte data
