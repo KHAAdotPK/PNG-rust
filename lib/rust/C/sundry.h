@@ -27,6 +27,7 @@ EXPORT_IMPORT int little_endian_read_u32(unsigned char* ptr);
 EXPORT_IMPORT unsigned char* little_endian_write_u32(unsigned char* ptr, unsigned int value);
 EXPORT_IMPORT unsigned int big_endian_read_u32(unsigned char* ptr);
 EXPORT_IMPORT void big_endian_write_u32(unsigned char* ptr, unsigned int value);
+EXPORT_IMPORT unsigned long update_crc(unsigned long crc, unsigned char *buf, unsigned int len);
 
 EXPORT_IMPORT DEFLATED_DATA_PTR de_flate(unsigned char* data, unsigned long data_size);
 EXPORT_IMPORT INFLATED_DATA_PTR in_flate(unsigned char* compressed_data, unsigned long compressed_size);

@@ -6,7 +6,7 @@
 mod constants;
 
 use std::collections::LinkedList; 
-use libc::{c_uchar, c_ulong};
+use libc::{c_uchar, c_ulong, c_uint};
 
 #[link(name = "png", kind = "dylib")]
 /* Native function call */
@@ -14,6 +14,7 @@ extern {
  
      fn big_endian_read_u32(ptr: *const u8) -> u32;     
      fn in_flate(data: *const u8, data_size: usize) -> *mut InflatedData;
+     fn update_crc(crc: c_ulong, buf: *const c_uchar, len: c_uint) -> c_ulong;
 }
 
 /// A C-compatible structure representing deflated (compressed) data.
@@ -27,6 +28,7 @@ extern {
 /// - The `size` must accurately reflect the allocated memory size.
 #[repr(C)]
 pub struct DeflatedData {
+    // Fields
     size: c_ulong,
     data: *mut c_uchar,
 }
@@ -115,9 +117,10 @@ impl Drop for DeflatedData {
 /// # Safety
 /// - Uses `unsafe` operations for byte manipulation and inflation
 /// - Assumes proper PNG chunk structure in input data
-#[derive(Clone)]
+// Add these derive attributes to your Chunk struct
+#[derive(Debug, PartialEq, Clone)]
 pub struct Chunk {
-     
+    // Fields 
     pub length: Vec<u8>,
     pub type_name: Vec<u8>,
     pub data: Vec<u8>,
@@ -245,7 +248,7 @@ impl Chunk {
 /// - Linked list of chunks (IHDR, PLTE, IDAT, IEND, etc.)
 #[derive(Clone)]
 pub struct Png {
-    
+    // Fields
     pub signature: Vec<u8>,            
     pub chunks: LinkedList<Chunk>,
 }
@@ -359,6 +362,11 @@ impl Png {
     pub fn get_chunks (&self) -> &LinkedList<Chunk> {
 
         &self.chunks
+    }
+
+    pub fn get_chunk_by_type (&self, type_name: &str) -> Option<&Chunk> {
+
+        self.chunks.iter().find(|chunk| chunk.get_type_name() == type_name)
     }
        
     /// Collects and concatenates all `IDAT` chunk data from the PNG file.
@@ -518,4 +526,206 @@ impl Png {
 
         true
     }
+}
+
+/*pub fn create_uncompressed_png(inflated_data: *mut InflatedData) -> Option<Png> {
+    // Check for null pointer
+    if inflated_data.is_null() {
+        return None;
+    }
+
+    // SAFETY: We've checked that the pointer is not null
+    let len = unsafe { (*inflated_data).len() };
+    
+    // Handle zero-length case if that's not acceptable
+    if len == 0 {
+        return None;
+    }
+
+    // Create vector with capacity
+    let mut buffer: Vec<u8> = Vec::with_capacity(len as usize);
+    
+    // SAFETY: We need to ensure we're copying exactly len bytes from a valid source
+    unsafe {
+        // Assuming inflated_data has a data field that's a *const u8 or similar
+        let src = (*inflated_data).data;
+        if src.is_null() {
+            return None;
+        }
+        buffer.set_len(len as usize); // Set length before copying
+        std::ptr::copy_nonoverlapping(src, buffer.as_mut_ptr(), len as usize);
+    }
+    
+    // Create and return a new Png instance
+    Some(Png::new(buffer))
+}*/
+
+//use std::os::raw::{c_ulong, c_uchar};
+
+/*pub fn create_uncompressed_png(inflated_data: *mut InflatedData) -> Option<Png> {
+    // Early return if null pointer
+    if inflated_data.is_null() {
+        return None;
+    }
+
+    // SAFETY: We've checked the pointer is not null
+    let inflated = unsafe { &*inflated_data };
+    
+    // Validate the data fields
+    if inflated.size == 0 {
+        return None;  // Zero-sized data is invalid for PNG
+    }
+    
+    // Check data pointer validity (can't be null for non-zero size)
+    if inflated.data.is_null() {
+        return None;
+    }
+
+    // Convert size to usize safely (check for overflow)
+    let size = match inflated.size.try_into() {
+        Ok(size) => size,
+        Err(_) => return None,  // Size too large for usize
+    };
+
+    println!("Size ==> {}", size);
+
+    // Create and fill the buffer
+    let mut buffer: Vec<u8> = Vec::with_capacity(size);
+
+    //println!("buffer capacity ==> {}", buffer.capacity());
+
+    unsafe {
+        // SAFETY:
+        // - We've checked data is not null
+        // - We've validated the size
+        // - The vector has exactly the required capacity
+        buffer.set_len(size);
+        println!("buffer capacity ==> {}", buffer.capacity());
+        std::ptr::copy_nonoverlapping(
+            inflated.data,
+            buffer.as_mut_ptr(),
+            size
+        );
+    }
+
+    // Create the PNG (assuming Png::new validates the data)
+    Some(Png::new(buffer))
+}*/
+
+pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut InflatedData) -> Option<Png> {
+    unsafe {
+
+        if (*inflated_data).data.is_null() {
+
+            return None;
+        }
+
+        let mut size = 0;
+
+        //  Setting up capacity fo all PNG chunks namely PNG-Signature + IHDR + IDAT + IEND
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        // 1. Add PNG signature
+        size = size + constants::LENGTH_OF_SIGNATURE;
+
+        // 2. Add Chunk size for IHDR
+        size = size + constants::LENGTH_OF_THREE_FIELDS;        
+        size = size + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize };
+
+        /*println! ("-----------------------------------------------> {}",  unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize });*/
+
+        // 3. Add Chunk size for IDAT
+        size = size + constants::LENGTH_OF_THREE_FIELDS;
+        size = size + (*inflated_data).size as usize;
+
+        // 4. Add Chunk size for IEND
+        size = size + constants::LENGTH_OF_THREE_FIELDS; // No data, length must be set to zero
+        /////////////////////////////////////////////////////////////////////////////////////////////////
+                
+        // Create a vector with the appropriate capacity
+        let mut buffer: Vec<u8> = Vec::with_capacity(size);
+
+        // 1. Add PNG signature
+        buffer.extend_from_slice(&constants::PNG_SIGNATURE);
+        // Lets use the debug format specifier {:?}, to debug and print slice containing the PNG signature bytes.
+        /*println!("PNG Signature ==> {:02X?}", &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE]);*/
+        /*
+            // To print each byte individually:
+            print!("PNG Signature ==> ");
+            for byte in &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE] {
+                print!("{:02X} ", byte);
+            }
+            println!();
+         */
+    
+        // 2. Add IHDR chunk
+        // 2.1 Add IHDR length (4 bytes) - Length of the IHDR data (13 bytes)
+        //let ihdr_length: u32 = constants::LENGTH_OF_IHDR_DATA; // IHDR data is always 13 bytes
+        //buffer.extend_from_slice(&ihdr_length.to_be_bytes());
+        buffer.extend_from_slice(&constants::LENGTH_OF_IHDR_DATA);
+
+        // 2.2 Add IHDR type (4 bytes)
+        //buffer.extend_from_slice(b"IHDR"); // Or use your constants::PNG_IHDR_TYPE_SIGNATURE
+        buffer.extend_from_slice(&constants::PNG_IHDR_TYPE_SIGNATURE);
+
+        // 2.3 Add actual IHDR data (13 bytes)
+        // Width (4 bytes)
+        buffer.extend_from_slice(&width.to_be_bytes());
+        // Height (4 bytes)
+        buffer.extend_from_slice(&height.to_be_bytes());
+        // Bit depth (1 byte), rest of data for IHDR
+        buffer.extend_from_slice(&constants::IHDR_DATA_FOR_UNCOMPRESSED_FILE);
+
+        //unsafe { update_crc(0xfffffff, buffer.as_ptr().add(constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD), constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize }) };
+
+        let mut crc: u32 = unsafe { update_crc(0xfffffff, buffer.as_ptr().add(constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) } ) } ^ 0xffffffff;
+
+        buffer.extend_from_slice(&crc.to_be_bytes());
+        
+        /*println!("CRC ==========>>>>>>> ==> {:02X?}", crc);*/
+        /*println!("DATA SO FAR ==========>>>>>>> ==> {:02X?}", &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD]);*/
+        /* Endo fo IHDR Chunk creation */
+
+        // Start of IEND Chunk
+        /////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // 1. Add IEND length (4 bytes) - Length of the IEND data (0 bytes)
+        buffer.extend_from_slice(&constants::LENGTH_OF_IEND_DATA);
+
+        // 2. Add IEND type (4 bytes)
+        buffer.extend_from_slice(&constants::PNG_IEND_TYPE_SIGNATURE);
+
+        // 3. Add actual IEND data (0 bytes)
+        // No data for IEND
+
+        // 4. Add CRC (4 bytes)
+        crc = unsafe { update_crc (0xFFFFFFFF, buffer.as_ptr().add( constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD  + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) } as usize + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) }) } ^ 0xffffffff;
+        //crc = unsafe { update_crc(0xffffffff, buffer.as_ptr().add(constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) }), 0x00) } ^ 0xffffffff;
+        //crc = unsafe { update_crc(0xffffffff, buffer.as_ptr().add(constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD), constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) as usize }) } ^ 0xffffffff;
+        buffer.extend_from_slice(&crc.to_be_bytes());   
+
+        /////////////////////////////////////////////////////////////////////////////////////////////////
+        // End of IEND Chunk
+                         
+        // Safety: We need to properly copy the data from the raw pointer
+        if !(*inflated_data).data.is_null() {
+            // Explicitly set the length of the buffer to avoid uninitialized memory
+            buffer.reserve_exact(size);
+            
+            // Copy the data from the inflated_data pointer to our buffer
+            std::ptr::copy_nonoverlapping(
+                (*inflated_data).data,
+                buffer.as_mut_ptr(),
+                size
+            );
+            
+            // Set the correct length after we've copied the data
+            buffer.set_len(size);
+        }
+        
+        // Create and return a new Png instance
+        //let png = Png::new(buffer);
+        //png        
+    }
+
+    None
 }
