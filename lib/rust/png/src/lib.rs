@@ -3,6 +3,10 @@
     Q@khaa.pk
  */
 
+// Add this at the top of your file with other use statements
+use std::fs::File;
+use std::io::Write;
+
 mod constants;
 
 use std::collections::LinkedList; 
@@ -14,6 +18,7 @@ extern {
  
      fn big_endian_read_u32(ptr: *const u8) -> u32;     
      fn in_flate(data: *const u8, data_size: usize) -> *mut InflatedData;
+     fn de_flate(data: *const u8, data_size: usize) -> *mut DeflatedData;
      fn update_crc(crc: c_ulong, buf: *const c_uchar, len: c_uint) -> c_ulong;
 }
 
@@ -307,6 +312,8 @@ impl Png {
                 );
 
                 head.push_back(chunk);
+
+                //intln! ("Chunk gone amd index = {}", index);
             
                 index = index + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(data[index .. (index + 4)].as_ptr()) } as usize + constants::LENGTH_OF_CRC_FIELD;
             }
@@ -391,7 +398,7 @@ impl Png {
     /// let idat_data = png.get_all_idat_data();
     /// // Further processing (e.g., decompression with a zlib decoder)
     /// ```
-    pub fn get_all_idat_data(&self) -> Vec<u8> {
+    pub fn get_all_idat_data_as_vec(&self) -> Vec<u8> {
 
         let mut all_idat_data = Vec::new();
 
@@ -410,6 +417,53 @@ impl Png {
 
         all_idat_data
     }
+
+    pub fn get_all_idat_data_as_DeflatedData(&self) -> *mut DeflatedData {
+        let mut all_idat_data = Vec::new();
+    
+        let mut iter = self.chunks.iter();
+    
+        while let Some(chunk) = iter.next() {
+            if chunk.get_type_name() == "IDAT" {
+                // Check if it matches the actual data length
+                assert_eq!(chunk.get_length() as usize, chunk.data.len());
+                all_idat_data.extend_from_slice(&chunk.data);                             
+            }
+        }
+    
+        let deflated_data = DeflatedData {
+            size: all_idat_data.len() as u32,  // Convert usize to u32
+            data: all_idat_data.as_mut_ptr(),  // Get raw pointer from Vec
+        };
+    
+        // Allocate on heap and return pointer
+        Box::into_raw(Box::new(deflated_data))
+    }
+
+/*    pub fn get_all_idat_data_new(&self) -> *mut DeflatedData {
+
+        let mut all_idat_data = Vec::new();
+
+        let mut iter = self.chunks.iter();
+
+        while let Some(chunk) = iter.next() {
+
+            if chunk.get_type_name() == "IDAT" {
+
+                // Check if it matches the actual data length
+                assert_eq!(chunk.get_length() as usize, chunk.data.len());
+
+                all_idat_data.extend_from_slice(&chunk.data);                             
+            }
+        }
+
+        let mut deflated_data = DeflatedData {
+            size: all_idat_data.len(),
+            data: all_idat_data,
+        };
+
+        unsafe { (&deflated_data).as_mut_ptr() }    
+    }*/
 
     /// Decompresses raw PNG `IDAT` chunk data using zlib inflation.
     ///
@@ -458,6 +512,24 @@ impl Png {
         unsafe { in_flate(data.as_ptr(), data.len()) }
     }
 
+    /*pub fn get_deflated_data (&self, data: &[u8]) -> *mut DeflatedData {
+
+        unsafe { de_flate(data.as_ptr(), data.len()) }
+    }*/
+
+    pub fn get_deflated_data (&self, data: *mut InflatedData) -> *mut DeflatedData {
+
+        //unsafe { de_flate((*data).data.as_mut(), (*data).size as usize) }
+        /*unsafe { 
+            de_flate((*data).data.as_ptr(), (*data).size as usize) 
+        }*/
+
+        unsafe {
+             
+            de_flate((*data).data as *const u8, (*data).size as usize) 
+        }
+    }
+
     /// Traverses and prints metadata for all chunks in the PNG file.
     ///
     /// This method iterates through each chunk in the PNG and logs its type, length, and
@@ -504,7 +576,9 @@ impl Png {
 
             if chunk.get_type_name() == "IHDR" {
 
-                println!("IHDR data --> Width = {}, Height = {}, Bit Depth = {}, Color Type = {}, Compression Method = {}, Filter Method = {}, Interlace Method = {}", chunk.get_width(), chunk.get_height(), chunk.get_bit_depth(), chunk.get_color_type(), chunk.get_compression_method(), chunk.get_filter_method(), chunk.get_interlace_method());                
+                println!("IHDR data --> Width = {}, Height = {}, Bit Depth = {}, Color Type = {}, Compression Method = {}, Filter Method = {}, Interlace Method = {}", chunk.get_width(), chunk.get_height(), chunk.get_bit_depth(), chunk.get_color_type(), chunk.get_compression_method(), chunk.get_filter_method(), chunk.get_interlace_method());
+
+                println!("What this value means for compression method? {}", chunk.get_compression_method());
                 
                 /* 
                     //8th octet, Bit depth: The number of bits per sample or per palette index (not per pixel). Valid values are 1, 2, 4, 8, and 16. Not all values are allowed for all colour types.
@@ -614,22 +688,34 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
         // 1. Add PNG signature
         size = size + constants::LENGTH_OF_SIGNATURE;
 
+        println! ("SIZE = {}", size); // 8
+
         // 2. Add Chunk size for IHDR
         size = size + constants::LENGTH_OF_THREE_FIELDS;        
         size = size + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize };
 
+        /*println! ("SIZE = {}", size); // 25 + 8 = 33*/
+        
         /*println! ("-----------------------------------------------> {}",  unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize });*/
+
 
         // 3. Add Chunk size for IDAT
         size = size + constants::LENGTH_OF_THREE_FIELDS;
         size = size + (*inflated_data).size as usize;
 
+        /*println! ("SIZE = {}, {}", size, (*inflated_data).size); // 33 + 12 +  262472 = 262517*/
+
         // 4. Add Chunk size for IEND
         size = size + constants::LENGTH_OF_THREE_FIELDS; // No data, length must be set to zero
         /////////////////////////////////////////////////////////////////////////////////////////////////
-                
+
+        /*println! ("SIZE = {}", size); // 262517 + 12 = 262529*/
+        
         // Create a vector with the appropriate capacity
         let mut buffer: Vec<u8> = Vec::with_capacity(size);
+
+        println! ( "Buffer = {}", buffer.len() );
+        println! ( "Capacity = {}", buffer.capacity() );
 
         // Start of PNG Signature
         //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -673,13 +759,14 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
         let mut crc: u32 = unsafe { update_crc(0xfffffff, buffer.as_ptr().add(constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) } ) } ^ 0xffffffff;
 
         buffer.extend_from_slice(&crc.to_be_bytes());
-        
-        println!("CRC ==========>>>>>>> ==> {:02X?}", crc);
+
+        // It got commented
+        /*println!("CRC ==========>>>>>>> ==> {:02X?}", crc);*/
+
         /*println!("DATA SO FAR ==========>>>>>>> ==> {:02X?}", &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD]);*/
         /* Endo fo IHDR Chunk creation */
         //////////////////////////////////////////////////////////////////////////////////////////////////
         // End of IHDR Chunk
-
 
         // Start of IDAT Chunk
         //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -729,12 +816,15 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
         /////////////////////////////////////////////////////////////////////////////////////////////////
         // End of IEND Chunk
 
+        // It got commented
         println!("DATA SO FAR ==========>>>>>>> ==> {:02X?}", &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + (*inflated_data).size as usize + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD]);
 
-        println! ("crc = {:02X?}", crc);
-                         
+        // It got commented
+        /*println! ("crc = {:02X?}", crc);*/
+        
+        
         // Safety: We need to properly copy the data from the raw pointer
-        if !(*inflated_data).data.is_null() {
+        /* !(*inflated_data).data.is_null() {
             // Explicitly set the length of the buffer to avoid uninitialized memory
             buffer.reserve_exact(size);
             
@@ -747,11 +837,27 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
             
             // Set the correct length after we've copied the data
             buffer.set_len(size);
+        }*/
+
+        println! ("ABOUT TO CREATE PNG INSTANCE......");
+        
+        // Write buffer data to file
+        match File::create("foo.png") {
+            Ok(mut file) => {
+                match file.write_all(&buffer) {
+                    Ok(_) => println!("Successfully wrote PNG data to foo.png"),
+                    Err(e) => eprintln!("Failed to write PNG data: {}", e),
+                }
+            }
+            Err(e) => eprintln!("Failed to create foo.png: {}", e),
         }
         
+        println! ("ABOUT TO CREATE PNG INSTANCE......");
         // Create and return a new Png instance
-        //let png = Png::new(buffer);
-        //png        
+        let png = Png::new(buffer);
+        //png  
+        
+        png.traverse();
     }
 
     None
