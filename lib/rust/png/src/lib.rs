@@ -7,9 +7,9 @@
 use std::fs::File;
 use std::io::Write;
 
-mod constants;
+pub mod constants;
 
-use std::collections::LinkedList; 
+use std::{collections::LinkedList, path::Path}; 
 use libc::{c_uchar, c_ulong, c_uint};
 
 #[link(name = "png", kind = "dylib")]
@@ -195,6 +195,11 @@ impl Chunk {
         
         unsafe { in_flate(self.data.as_ptr(), self.get_length() as usize ) }
     }
+
+    pub fn get_crc (&self) -> u32 {
+
+        unsafe { big_endian_read_u32 (self.crc.as_ptr()) }
+    }
     
     //////////////////////////////////////////////////////
     // Block containing IHDR related methods begin here //   
@@ -240,6 +245,11 @@ impl Chunk {
     pub fn get_interlace_method (&self) -> u8 {
 
         self.data[12]
+    }
+
+    pub fn get_data (&self) -> Vec<u8> {
+
+        self.data.clone()
     }
     ////////////////////////////////////////////////////
     // Block containing IHDR related methods end here //   
@@ -600,6 +610,25 @@ impl Png {
 
         true
     }
+
+    pub fn create_file(&self, path: &Path) -> Result<(), std::io::Error> {
+
+        let mut file = File::create(path)?;     
+
+        file.write_all(&self.signature)?;
+        
+        let mut iter = self.chunks.iter();
+
+        while let Some(chunk) = iter.next() {
+
+            file.write_all(&chunk.get_length().to_be_bytes())?;
+            file.write_all(&chunk.get_type_name().as_bytes())?;
+            file.write_all(&chunk.get_data())?;
+            file.write_all(&chunk.get_crc().to_be_bytes())?;
+        }
+    
+        Ok(())
+    }
 }
 
 /**
@@ -673,7 +702,7 @@ impl Png {
  * - The function assumes RGB color type (2) with 8-bit depth for uncompressed data
  * - Memory allocation is pre-calculated for optimal performance
  */
-pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut InflatedData) -> Option<Png> {
+pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut InflatedData, out_put_file_path: &Path) -> Option<Png> {
     unsafe {
 
         if (*inflated_data).data.is_null() {
@@ -842,7 +871,7 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
         println! ("ABOUT TO CREATE PNG INSTANCE......");
         
         // Write buffer data to file
-        match File::create("foo.png") {
+        match File::create(out_put_file_path) {
             Ok(mut file) => {
                 match file.write_all(&buffer) {
                     Ok(_) => println!("Successfully wrote PNG data to foo.png"),
@@ -858,7 +887,9 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
         //png  
         
         png.traverse();
+
+        return Some(png);
     }
 
-    None
+    //None
 }
