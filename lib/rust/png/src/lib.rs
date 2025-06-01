@@ -3,11 +3,20 @@
     Q@khaa.pk
  */
 
+// Declare modules at the crate root
+pub mod constants;
+pub mod png_core;
+
+// Re-export everything from png_core
+pub use png_core::*;
+
+//mod png_core;
+//Re-export everything from mod
+//pub use png_core::*;
+ 
 // Add this at the top of your file with other use statements
 use std::fs::File;
 use std::io::Write;
-
-pub mod constants;
 
 use std::{collections::LinkedList, path::Path}; 
 use libc::{c_uchar, c_ulong, c_uint};
