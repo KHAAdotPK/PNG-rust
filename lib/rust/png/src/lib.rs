@@ -638,6 +638,66 @@ impl Png {
     
         Ok(())
     }
+
+    /**
+     * Validates whether the PNG image matches the specified color type and bit depth.
+     * 
+     * This method examines the IHDR (Image Header) chunk of the PNG file to determine
+     * if the image's color type and bit depth match the provided parameters. The IHDR
+     * chunk contains critical image metadata including dimensions, color type, and bit depth.
+     * 
+     * # Parameters
+     * * `color_type` - The expected color type value (0-6 according to PNG specification):
+     *   - 0: Grayscale
+     *   - 2: RGB (Truecolor)
+     *   - 3: Palette
+     *   - 4: Grayscale with Alpha
+     *   - 6: RGB with Alpha (RGBA)
+     * * `bit_depth` - The expected bit depth per sample (1, 2, 4, 8, or 16 bits)
+     * 
+     * # Returns
+     * * `true` - If the PNG's color type and bit depth both match the specified values
+     * * `false` - If either value doesn't match, or if the IHDR chunk is missing/invalid
+     * 
+     * # Example
+     * ```rust
+     * let png = Png::new(buffer);
+     * 
+     * // Check if PNG is 8-bit RGB (truecolor)
+     * if png.match_color_type_and_bit_depth(2, 8) {
+     *     println!("PNG is 8-bit RGB format");
+     * } else {
+     *     println!("PNG format not supported");
+     * }
+     * ```
+     * 
+     * # Note
+     * This method is typically used for format validation before processing PNG data,
+     * as different color types and bit depths require different decoding strategies.
+     */
+    pub fn match_color_type_and_bit_depth(&self, color_type: u8, bit_depth: u8) -> bool {
+
+        let chunk: Option<&Chunk> = self.get_chunk_by_type("IHDR");
+
+        match chunk {
+
+            Some(chunk) => {
+
+                chunk.get_color_type() == color_type && chunk.get_bit_depth() == bit_depth
+            },
+
+            None => false
+        }
+
+        /*if chunk.is_none() {
+
+            return false;
+        }  
+
+        let chunk = chunk.unwrap();
+
+        chunk.get_color_type() == color_type && chunk.get_bit_depth() == bit_depth*/
+    }
 }
 
 /**
