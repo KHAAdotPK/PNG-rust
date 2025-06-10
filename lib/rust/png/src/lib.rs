@@ -41,10 +41,11 @@ extern {
 ///   that Rust uses (typically the system allocator).
 /// - The `size` must accurately reflect the allocated memory size.
 #[repr(C)]
+#[derive(Clone, Debug)]
 pub struct DeflatedData {
     // Fields
-    size: c_ulong,
-    data: *mut c_uchar,
+    pub size: c_ulong,
+    pub data: *mut c_uchar,
 }
 
 /// Type alias for inflated (decompressed) data.
@@ -774,7 +775,7 @@ impl Png {
 pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut InflatedData, out_put_file_path: &Path) -> Option<Png> {
     unsafe {
 
-        if (*inflated_data).data.is_null() {
+        if ((*inflated_data).data.is_null() || (*inflated_data).len() == 0) || (width == 0 || height == 0) {
 
             return None;
         }
@@ -865,13 +866,13 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
         /* Endo fo IHDR Chunk creation */
         //////////////////////////////////////////////////////////////////////////////////////////////////
         // End of IHDR Chunk
-
+        
         // Start of IDAT Chunk
         //////////////////////////////////////////////////////////////////////////////////////////////////
         buffer.extend_from_slice(&(*inflated_data).len().to_be_bytes());  
         buffer.extend_from_slice(&constants::PNG_IDAT_TYPE_SIGNATURE);  
-        //buffer.extend_from_slice(&(*inflated_data).data);
-        buffer.extend_from_slice(std::slice::from_raw_parts((*inflated_data).data, (*inflated_data).size as usize));
+        //buffer.extend_from_slice(&(*inflated_data).data);        
+        buffer.extend_from_slice(std::slice::from_raw_parts( (*inflated_data).data, (*inflated_data).size as usize));
 
         //crc = unsafe { update_crc (0xFFFFFFFF, buffer.as_ptr().add( constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD  + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) } as usize + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) }) } ^ 0xffffffff;
 
@@ -915,7 +916,7 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
         // End of IEND Chunk
 
         // It got commented
-        println!("DATA SO FAR ==========>>>>>>> ==> {:02X?}", &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + (*inflated_data).size as usize + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD]);
+        //println!("DATA SO FAR ==========>>>>>>> ==> {:02X?}", &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + (*inflated_data).size as usize + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD]);
 
         // It got commented
         /*println! ("crc = {:02X?}", crc);*/
@@ -962,3 +963,125 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
 
     //None
 }
+
+/// Modifies PNG pixel data for testing and validation purposes.
+///
+/// This function is specifically designed to test pixel data manipulation in inflated PNG chunks.
+/// It modifies pixel values based on the PNG color type and bit depth, then stores the changes
+/// back into the inflated data structure. The modified data can later be written to a file
+/// for physical proof that the PNG parsing and manipulation library is working correctly.
+///
+/// # Purpose
+/// - Test pixel data access and modification
+/// - Validate PNG parsing functionality  
+/// - Provide physical proof of successful PNG manipulation
+/// - Serve as a foundation for more complex pixel operations
+///
+/// # Parameters
+/// * `pixels` - Mutable pointer to inflated PNG pixel data
+/// * `data` - Vector containing replacement color values (RGB components)
+/// * `width` - Image width in pixels
+/// * `height` - Image height in pixels  
+/// * `color_type` - PNG color type (2 for RGB truecolor)
+/// * `bit_depth` - Bits per color component (typically 8)
+///
+/// # Returns
+/// * Returns the same pointer to the modified inflated data
+///
+/// # Safety
+/// This function uses unsafe pointer operations to directly modify pixel data.
+/// Caller must ensure the pixels pointer is valid and points to sufficient memory.
+///
+/// # Current Implementation
+/// - Supports RGB truecolor (color_type=2, bit_depth=8)
+/// - Processes scanline-by-scanline with filter byte handling
+/// - Replaces pixel values with provided data vector values
+/// - Function will be extended based on future requirements
+///
+/// # Example
+/// ```rust
+/// let modified = modify_png_pixel_data(
+///     inflated_data_ptr,
+///     vec![0xFF, 0x00, 0x00], // Red color
+///     width,
+///     height,
+///     2, // RGB truecolor
+///     8  // 8-bit depth
+/// );
+/// ```
+pub fn modify_png_pixel_data (pixels: *mut InflatedData, data: Vec<u8>, width: u32, height: u32, color_type: u8, bit_depth: u8) -> *mut InflatedData {
+
+    // Here we can modify the pixel data based on the color type and bit depth
+    // For example, if color_type is 2 (Truecolor), we can modify RGB values
+    // If color_type is 3 (Indexed), we can modify palette indices
+
+    // This is a placeholder for actual pixel modification logic
+    // For now, we just return the original data pointer
+
+    // Check if we're dealing with RGB truecolor format with 8-bit depth
+    // Color type 2 = RGB (3 bytes per pixel), bit depth 8 = 8 bits per color component
+    if color_type == 2 && bit_depth == 8 {
+
+        unsafe {
+
+            // Counter to track current row being processed (for debugging purposes)
+            let mut idx = 0;
+
+            // Iterate through each row (scanline) of the image
+            // PNG stores image data as horizontal scanlines from top to bottom
+            for i in (0..height) {
+
+                // Iterate through each pixel in the current scanline
+                // j starts at 1 because byte 0 of each scanline is the filter byte
+                // Each pixel is 3 bytes (RGB), so we step by 3
+                // Total scanline length = width * 3 bytes + 1 filter byte
+                /*J needs to originate at 1, becuase 0 byte of each line is always 0 in PNG file*/
+                for j in (1..((width*3 + 1) as usize)).step_by(3) {
+
+                    // Check if the filter byte (first byte of scanline) is 0x00
+                    // Filter byte 0x00 means "None" - no filtering applied to this scanline
+                    // Calculate scanline start: row_index * (width * 3_bytes_per_pixel + 1_filter_byte)
+                    /*first byte must be 0x00 and this is working as well because idx is same as height of the image*/
+                    if *(*pixels).data.add((i*(width*3 + 1)) as usize) == 0x00 /*&& *(*dat).data.add(1) == 0x00 && *(*dat).data.add(2) == 0x00*/ {
+
+                        // Update row counter (idx will equal current row + 1)
+                        // This serves as a debugging aid to verify we're processing all rows                
+                        /*idx needs to originate at 1, this working perfectly*/
+                        idx = i + 1;
+
+                        // Note: The commented condition would check if current pixel is non-zero
+                        // Currently we modify ALL pixels regardless of their original values
+                        /*if *(*dat).data.add((i*(width + 1) + (j + 0)) as usize) != 0x00 && *(*dat).data.add((i*(width + 1) + (j + 1)) as usize) != 0x00 && *(*dat).data.add((i*(width + 1) + (j + 2)) as usize) != 0x00*/ {
+
+                            // Modify the RGB components of the current pixel
+                            // Calculate pixel address: scanline_start + pixel_offset_in_scanline
+
+                            
+                            // Set Red component to data[0] (typically 0xFF for pure red)
+                            *(*pixels).data.add(((i*(width*3 + 1)) as usize + (j + 0))) = data[0] ; // R  
+                            // Set Green component to data[1] (typically 0x00 for pure red)
+                            *(*pixels).data.add(((i*(width*3 + 1)) as usize + (j + 1))) = data[1];  // G
+                            // Set Blue component to data[2] (typically 0x00 for pure red)
+                            *(*pixels).data.add(((i*(width*3 + 1)) as usize + (j + 2))) = data[2];  // B
+                        }
+                    }                                    
+                }
+            }
+
+            // Debug output to verify we processed all rows correctly
+            // idx should equal height if all scanlines were processed
+            /*The idx value and the height are same which is 344 and this the actaul height of the image I have checked it.*/
+            //println! ("-------------->>>>>>> idx = {}, height = {}", idx, height);
+
+            /*Return the modified pixel data}*/
+
+            // Note: Function completes pixel modification here
+            // The modified pixel data remains in memory for later use
+        }    
+    }
+
+    // Return the pointer to the modified inflated data
+    // The same pointer is returned but the data it points to has been modified
+    pixels
+} 
+
