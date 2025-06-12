@@ -438,6 +438,33 @@ impl Png {
         all_idat_data
     }
 
+    /// Retrieves all IDAT chunk data from the PNG file as a single deflated data block.
+    ///
+    /// This function:
+    /// 1. Iterates through all chunks in the PNG file
+    /// 2. Collects the raw data from all IDAT chunks into a contiguous buffer
+    /// 3. Packages the data in a `DeflatedData` structure containing:
+    ///    - The total size of all IDAT data combined (as u32)
+    ///    - A raw pointer to the deflated data bytes
+    ///
+    /// # Returns
+    /// A raw pointer to a heap-allocated `DeflatedData` structure containing:
+    /// - `size`: Total size of all IDAT data in bytes
+    /// - `data`: Pointer to the raw deflated data bytes (all IDAT chunks concatenated)
+    ///
+    /// # Safety
+    /// The caller is responsible for:
+    /// - Properly freeing the memory allocated for the `DeflatedData` structure
+    /// - Ensuring the data pointer is not used after the structure is freed
+    /// - The data pointer becomes invalid if the original PNG structure is modified or dropped
+    ///
+    /// # Panics
+    /// - If any IDAT chunk's declared length doesn't match its actual data length
+    ///
+    /// # Notes
+    /// - The returned data is exactly as it appears in the IDAT chunks (still deflated/compressed)
+    /// - IDAT chunks are concatenated in the order they appear in the file
+    /// - Non-IDAT chunks are ignored
     pub fn get_all_idat_data_as_DeflatedData(&self) -> *mut DeflatedData {
         let mut all_idat_data = Vec::new();
     
@@ -459,31 +486,6 @@ impl Png {
         // Allocate on heap and return pointer
         Box::into_raw(Box::new(deflated_data))
     }
-
-/*    pub fn get_all_idat_data_new(&self) -> *mut DeflatedData {
-
-        let mut all_idat_data = Vec::new();
-
-        let mut iter = self.chunks.iter();
-
-        while let Some(chunk) = iter.next() {
-
-            if chunk.get_type_name() == "IDAT" {
-
-                // Check if it matches the actual data length
-                assert_eq!(chunk.get_length() as usize, chunk.data.len());
-
-                all_idat_data.extend_from_slice(&chunk.data);                             
-            }
-        }
-
-        let mut deflated_data = DeflatedData {
-            size: all_idat_data.len(),
-            data: all_idat_data,
-        };
-
-        unsafe { (&deflated_data).as_mut_ptr() }    
-    }*/
 
     /// Decompresses raw PNG `IDAT` chunk data using zlib inflation.
     ///
@@ -531,19 +533,89 @@ impl Png {
 
         unsafe { in_flate(data.as_ptr(), data.len()) }
     }
+    
+    /// (Raw Pointer Version)
+    /// Compresses (deflates) the given inflated (raw) image data using zlib compression.
+    ///
+    /// This function takes a raw pointer to an `InflatedData` structure and returns a pointer
+    /// to a newly allocated compressed (deflated) data buffer in DEFLATE/zlib format.
+    ///
+    /// # Arguments
+    /// * `data` - A raw pointer to an `InflatedData` structure containing:
+    ///   - `size`: The size of the uncompressed data in bytes
+    ///   - `data`: Pointer to the raw uncompressed pixel data
+    ///
+    /// # Returns
+    /// A raw pointer to a heap-allocated `DeflatedData` structure containing:
+    /// - `size`: The size of the compressed data in bytes
+    /// - `data`: Pointer to the compressed data buffer
+    ///
+    /// # Safety
+    /// This function is marked `unsafe` because:
+    /// - It dereferences a raw pointer (`data`)
+    /// - The caller must ensure:
+    ///   - The input pointer is valid and properly aligned
+    ///   - The `InflatedData` structure hasn't been freed
+    ///   - The data pointer within `InflatedData` points to valid memory of the specified size
+    /// - The caller becomes responsible for:
+    ///   - Managing the lifetime of the input data (this function does NOT free it)
+    ///   - Freeing the returned `DeflatedData` structure
+    ///
+    /// # Memory Management
+    /// - Does NOT take ownership of the input pointer
+    /// - The caller must ensure proper cleanup of both input and output data
+    ///
+    /// # Panics
+    /// - May panic if the compression fails (though current implementation assumes success)
+    ///
+    /// # Notes
+    /// - Uses zlib/DEFLATE compression (standard for PNG)
+    /// - Prefer `get_deflated_data_from_boxed_inflated_data` for safer memory handling
+    pub fn get_deflated_data_from_inflated_data (&self, data: *mut InflatedData) -> *mut DeflatedData {
+        
+        unsafe {
+             
+            de_flate((*data).data as *const u8, (*data).size as usize) 
+        }
+    }
 
-    /*pub fn get_deflated_data (&self, data: &[u8]) -> *mut DeflatedData {
-
-        unsafe { de_flate(data.as_ptr(), data.len()) }
-    }*/
-
-    pub fn get_deflated_data (&self, data: *mut InflatedData) -> *mut DeflatedData {
-
-        //unsafe { de_flate((*data).data.as_mut(), (*data).size as usize) }
-        /*unsafe { 
-            de_flate((*data).data.as_ptr(), (*data).size as usize) 
-        }*/
-
+    /// (Owned Version)
+    /// Compresses (deflates) the given owned inflated image data using zlib compression.
+    ///
+    /// This function takes ownership of a `Box<InflatedData>` and returns a pointer
+    /// to a newly allocated compressed (deflated) data buffer in DEFLATE/zlib format.
+    ///
+    /// # Arguments
+    /// * `data` - A boxed `InflatedData` structure containing:
+    ///   - `size`: The size of the uncompressed data in bytes
+    ///   - `data`: Pointer to the raw uncompressed pixel data
+    ///
+    /// # Returns
+    /// A raw pointer to a heap-allocated `DeflatedData` structure containing:
+    /// - `size`: The size of the compressed data in bytes
+    /// - `data`: Pointer to the compressed data buffer
+    ///
+    /// # Safety
+    /// This function is marked `unsafe` because:
+    /// - It internally dereferences raw pointers
+    /// - The caller must ensure:
+    ///   - The box contains valid, initialized data
+    /// - The caller becomes responsible for:
+    ///   - Freeing the returned `DeflatedData` structure
+    ///
+    /// # Memory Management
+    /// - Takes ownership of the input data (will be freed when function exits)
+    /// - The returned pointer must still be manually managed
+    ///
+    /// # Panics
+    /// - May panic if the compression fails (though current implementation assumes success)
+    ///
+    /// # Notes
+    /// - Uses zlib/DEFLATE compression (standard for PNG)
+    /// - Safer than raw pointer version as it guarantees input data validity
+    /// - Still returns raw pointer for FFI compatibility
+    pub fn get_deflated_data_from_boxed_inflated_data (&self, data: Box<InflatedData>) -> *mut DeflatedData {
+        
         unsafe {
              
             de_flate((*data).data as *const u8, (*data).size as usize) 
