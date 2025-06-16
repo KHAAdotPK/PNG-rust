@@ -670,7 +670,7 @@ impl Png {
 
                 println!("IHDR data --> Width = {}, Height = {}, Bit Depth = {}, Color Type = {}, Compression Method = {}, Filter Method = {}, Interlace Method = {}", chunk.get_width(), chunk.get_height(), chunk.get_bit_depth(), chunk.get_color_type(), chunk.get_compression_method(), chunk.get_filter_method(), chunk.get_interlace_method());
 
-                println!("What this value means for compression method? {}", chunk.get_compression_method());
+                /*println!("What this value means for compression method? {}", chunk.get_compression_method());*/
                 
                 /* 
                     //8th octet, Bit depth: The number of bits per sample or per palette index (not per pixel). Valid values are 1, 2, 4, 8, and 16. Not all values are allowed for all colour types.
@@ -693,7 +693,7 @@ impl Png {
         true
     }
 
-    pub fn create_file(&self, path: &Path) -> Result<(), std::io::Error> {
+    pub fn save_to_file(&self, path: &Path) -> Result<(), std::io::Error> {
 
         let mut file = File::create(path)?;     
 
@@ -844,7 +844,7 @@ impl Png {
  * - The function assumes RGB color type (2) with 8-bit depth for uncompressed data
  * - Memory allocation is pre-calculated for optimal performance
  */
-pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut InflatedData, out_put_file_path: &Path) -> Option<Png> {
+pub fn create_png_from_deflated_data(width: u32, height: u32, inflated_data: *mut InflatedData, out_put_file_path: &Path) -> Option<Png> {
     unsafe {
 
         if ((*inflated_data).data.is_null() || (*inflated_data).len() == 0) || (width == 0 || height == 0) {
@@ -1010,7 +1010,7 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
             buffer.set_len(size);
         }*/
 
-        println! ("ABOUT TO CREATE PNG INSTANCE......");
+        /*println! ("ABOUT TO CREATE PNG INSTANCE......");
         
         // Write buffer data to file
         match File::create(out_put_file_path) {
@@ -1023,12 +1023,207 @@ pub fn create_uncompressed_png(width: u32, height: u32, inflated_data: *mut Infl
             Err(e) => eprintln!("Failed to create foo.png: {}", e),
         }
         
-        println! ("ABOUT TO CREATE PNG INSTANCE......");
+        println! ("ABOUT TO CREATE PNG INSTANCE......");*/
         // Create and return a new Png instance
         let png = Png::new(buffer);
         //png  
         
-        png.traverse();
+        /*png.traverse();*/
+
+        return Some(png);
+    }
+
+    //None
+}
+
+pub fn create_png_from_boxed_defalted_data(width: u32, height: u32, inflated_data: Box<DeflatedData>, out_put_file_path: &Path) -> Option<Png> {
+    unsafe {
+
+        if ((*inflated_data).data.is_null() || (*inflated_data).len() == 0) || (width == 0 || height == 0) {
+
+            return None;
+        }
+
+        let mut size = 0;
+
+        //  Setting up capacity fo all PNG chunks namely PNG-Signature + IHDR + IDAT + IEND
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        // 1. Add PNG signature
+        size = size + constants::LENGTH_OF_SIGNATURE;
+
+        /*println! ("SIZE = {}", size);*/ // 8
+
+        // 2. Add Chunk size for IHDR
+        size = size + constants::LENGTH_OF_THREE_FIELDS;        
+        size = size + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize };
+
+        /*println! ("SIZE = {}", size); // 25 + 8 = 33*/
+        
+        /*println! ("-----------------------------------------------> {}",  unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize });*/
+
+
+        // 3. Add Chunk size for IDAT
+        size = size + constants::LENGTH_OF_THREE_FIELDS;
+        size = size + (*inflated_data).size as usize;
+
+        /*println! ("SIZE = {}, {}", size, (*inflated_data).size); // 33 + 12 +  262472 = 262517*/
+
+        // 4. Add Chunk size for IEND
+        size = size + constants::LENGTH_OF_THREE_FIELDS; // No data, length must be set to zero
+        /////////////////////////////////////////////////////////////////////////////////////////////////
+
+        /*println! ("SIZE = {}", size); // 262517 + 12 = 262529*/
+        
+        // Create a vector with the appropriate capacity
+        let mut buffer: Vec<u8> = Vec::with_capacity(size);
+
+        /*println! ( "Buffer = {}", buffer.len() );*/
+        /*println! ( "Capacity = {}", buffer.capacity() );*/
+
+        // Start of PNG Signature
+        //////////////////////////////////////////////////////////////////////////////////////////////////
+        // 1. Add PNG signature        
+        buffer.extend_from_slice(&constants::PNG_SIGNATURE);
+        // Lets use the debug format specifier {:?}, to debug and print slice containing the PNG signature bytes.
+        /*println!("PNG Signature ==> {:02X?}", &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE]);*/
+        /*
+            // To print each byte individually:
+            print!("PNG Signature ==> ");
+            for byte in &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE] {
+                print!("{:02X} ", byte);
+            }
+            println!();
+         */
+         //////////////////////////////////////////////////////////////////////////////////////////////////
+         // End of PNG Signature
+
+        // Start of IHDR Chunk
+        //////////////////////////////////////////////////////////////////////////////////////////////////
+        // 2. Add IHDR chunk
+        // 2.1 Add IHDR length (4 bytes) - Length of the IHDR data (13 bytes)
+        //let ihdr_length: u32 = constants::LENGTH_OF_IHDR_DATA; // IHDR data is always 13 bytes
+        //buffer.extend_from_slice(&ihdr_length.to_be_bytes());
+        buffer.extend_from_slice(&constants::LENGTH_OF_IHDR_DATA);
+
+        // 2.2 Add IHDR type (4 bytes)
+        //buffer.extend_from_slice(b"IHDR"); // Or use your constants::PNG_IHDR_TYPE_SIGNATURE
+        buffer.extend_from_slice(&constants::PNG_IHDR_TYPE_SIGNATURE);
+
+        // 2.3 Add actual IHDR data (13 bytes)
+        // Width (4 bytes)
+        buffer.extend_from_slice(&width.to_be_bytes());
+        // Height (4 bytes)
+        buffer.extend_from_slice(&height.to_be_bytes());
+        // Bit depth (1 byte), rest of data for IHDR
+        buffer.extend_from_slice(&constants::IHDR_DATA_FOR_UNCOMPRESSED_FILE);
+
+        //unsafe { update_crc(0xfffffff, buffer.as_ptr().add(constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD), constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize }) };
+
+        let mut crc: u32 = unsafe { update_crc(0xfffffff, buffer.as_ptr().add(constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) } ) } ^ 0xffffffff;
+
+        buffer.extend_from_slice(&crc.to_be_bytes());
+
+        // It got commented
+        /*println!("CRC ==========>>>>>>> ==> {:02X?}", crc);*/
+
+        /*println!("DATA SO FAR ==========>>>>>>> ==> {:02X?}", &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD]);*/
+        /* Endo fo IHDR Chunk creation */
+        //////////////////////////////////////////////////////////////////////////////////////////////////
+        // End of IHDR Chunk
+        
+        // Start of IDAT Chunk
+        //////////////////////////////////////////////////////////////////////////////////////////////////
+        buffer.extend_from_slice(&(*inflated_data).len().to_be_bytes());  
+        buffer.extend_from_slice(&constants::PNG_IDAT_TYPE_SIGNATURE);  
+        //buffer.extend_from_slice(&(*inflated_data).data);        
+        buffer.extend_from_slice(std::slice::from_raw_parts( (*inflated_data).data, (*inflated_data).size as usize));
+
+        //crc = unsafe { update_crc (0xFFFFFFFF, buffer.as_ptr().add( constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD  + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) } as usize + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) }) } ^ 0xffffffff;
+
+        crc = unsafe { update_crc (0xFFFFFFFF, buffer.as_ptr().add( constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD  + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) } as usize + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + (*inflated_data).size /*as usize*/) } ^ 0xffffffff;
+
+        buffer.extend_from_slice(&crc.to_be_bytes());
+
+        //println! ("Length of inflated data = {:02X?}", (*inflated_data).len());
+        //println! ("Length of inflated data = {:02X?}", (*inflated_data).len().to_be_bytes());        
+        //////////////////////////////////////////////////////////////////////////////////////////////////
+        // End of IDAT Chunk
+
+        //println!("DATA SO FAR ==========>>>>>>> ==> {:02X?}", &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + (*inflated_data).size as usize + constants::LENGTH_OF_CRC_FIELD]);
+
+        //println! ("crc = {:02X?}", crc);
+        
+        // Start of IEND Chunk
+        /////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // 1. Add IEND length (4 bytes) - Length of the IEND data (0 bytes)
+        buffer.extend_from_slice(&constants::LENGTH_OF_IEND_DATA);
+
+        // 2. Add IEND type (4 bytes)
+        buffer.extend_from_slice(&constants::PNG_IEND_TYPE_SIGNATURE);
+
+        // 3. Add actual IEND data (0 bytes)
+        // No data for IEND
+
+        // 4. Add CRC (4 bytes)
+
+        // (constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + (*inflated_data).size as usize + constants::LENGTH_OF_CRC_FIELD) + constants::LENGTH_OF_LENGTH_FIELD
+
+        crc = unsafe { update_crc (0xFFFFFFFF, buffer.as_ptr().add((constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + (*inflated_data).size as usize + constants::LENGTH_OF_CRC_FIELD) + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) }) } ^ 0xffffffff;
+        //crc = unsafe { update_crc (0xFFFFFFFF, buffer.as_ptr().add( constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD  + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) } as usize + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) }) } ^ 0xffffffff;
+        
+        //crc = unsafe { update_crc(0xffffffff, buffer.as_ptr().add(constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) }), 0x00) } ^ 0xffffffff;
+        //crc = unsafe { update_crc(0xffffffff, buffer.as_ptr().add(constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD), constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) as usize }) } ^ 0xffffffff;
+        buffer.extend_from_slice(&crc.to_be_bytes());   
+
+        /////////////////////////////////////////////////////////////////////////////////////////////////
+        // End of IEND Chunk
+
+        // It got commented
+        //println!("DATA SO FAR ==========>>>>>>> ==> {:02X?}", &buffer.as_slice()[0..constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + (*inflated_data).size as usize + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD]);
+
+        // It got commented
+        /*println! ("crc = {:02X?}", crc);*/
+        
+        
+        // Safety: We need to properly copy the data from the raw pointer
+        /* !(*inflated_data).data.is_null() {
+            // Explicitly set the length of the buffer to avoid uninitialized memory
+            buffer.reserve_exact(size);
+            
+            // Copy the data from the inflated_data pointer to our buffer
+            std::ptr::copy_nonoverlapping(
+                (*inflated_data).data,
+                buffer.as_mut_ptr(),
+                size
+            );
+            
+            // Set the correct length after we've copied the data
+            buffer.set_len(size);
+        }*/
+
+        
+        /*
+                println! ("ABOUT TO CREATE PNG INSTANCE......");
+        
+                // Write buffer data to file
+                match File::create(out_put_file_path) {
+                    Ok(mut file) => {
+                        match file.write_all(&buffer) {
+                            Ok(_) => println!("Successfully wrote PNG data to foo.png"),
+                            Err(e) => eprintln!("Failed to write PNG data: {}", e),
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to create foo.png: {}", e),
+                }
+         */
+        
+        /*println! ("ABOUT TO CREATE PNG INSTANCE......");*/
+        // Create and return a new Png instance
+        let png = Png::new(buffer);
+        //png  
+        
+        //png.traverse();
 
         return Some(png);
     }
