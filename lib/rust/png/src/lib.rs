@@ -614,6 +614,40 @@ impl Png {
         }
     }
 
+    /**
+     * Removes PNG filter bytes from inflated IDAT data and extracts raw pixel data.
+     * 
+     * This method processes PNG image data that has been decompressed from IDAT chunks,
+     * removing the filter type bytes that appear at the beginning of each scanline and
+     * extracting the actual pixel RGB values.
+     * 
+     * # PNG Filtering Context
+     * PNG images use a filtering system where each scanline (row) begins with a filter
+     * type byte (0-4) that indicates how the pixel data in that row has been filtered.
+     * Filter type 0 means "None" - no filtering applied, so pixel data is raw.
+     * 
+     * # Parameters
+     * * `inflated_data` - Raw pointer to InflatedData containing decompressed IDAT data
+     * 
+     * # Returns
+     * * `*mut InflatedData` - Boxed pointer to new InflatedData containing filtered pixel data,
+     *   or null data on error
+     * 
+     * # Supported Color Types
+     * * Color type 2: Truecolor RGB (3 bytes per pixel)
+     * * Color type 3: Indexed color (1 byte per pixel)
+     * 
+     * # Safety
+     * This function uses unsafe code to dereference raw pointers and create slices from
+     * raw memory. The caller must ensure the inflated_data pointer is valid and points
+     * to properly initialized InflatedData.
+     * 
+     * # Error Handling
+     * Returns InflatedData with null pointer and size 0 if:
+     * - IHDR chunk is missing
+     * - Unsupported color type
+     * - Row data extends beyond available data bounds
+     */
     pub fn remove_filter_bytes_from_inflated_data(&self, inflated_data: *mut InflatedData) -> *mut InflatedData {
 
         let ihdr_chunk = self.get_chunk_by_type("IHDR");
