@@ -10,15 +10,7 @@ pub mod png_core;
 // Re-export everything from png_core
 pub use png_core::*;
 
-//mod png_core;
-//Re-export everything from mod
-//pub use png_core::*;
- 
-// Add this at the top of your file with other use statements
-use std::fs::File;
-use std::io::Write;
-
-use std::{collections::LinkedList, path::Path}; 
+use std::{fs::File, io::Write, collections::LinkedList, path::Path, ptr}; 
 use libc::{c_uchar, c_ulong, c_uint};
 
 #[link(name = "png", kind = "dylib")]
@@ -620,6 +612,132 @@ impl Png {
              
             de_flate((*data).data as *const u8, (*data).size as usize) 
         }
+    }
+
+    pub fn remove_filter_bytes_from_inflated_data(&self, inflated_data: *mut InflatedData) -> *mut InflatedData {
+
+        let ihdr_chunk = self.get_chunk_by_type("IHDR");
+
+        if ihdr_chunk.is_none() {
+
+            //panic!("IHDR chunk not found in PNG file");
+
+            let new_inflated_data: InflatedData = InflatedData {
+                size: 0 as c_ulong,  // Convert usize to u32
+                data: ptr::null_mut(),  // Get raw pointer from Vec
+            };
+
+            return Box::into_raw(Box::new(new_inflated_data));
+        }
+
+        /*
+            Filtering Method IHDR field
+            ---------------------------
+            In PNG format, the filter method in the IHDR chunk is typically just one byte that indicates the filtering algorithm used.
+            For standard PNG files, this value is almost always 0, which indicates the default PNG filtering method.
+            With filter method 0, each scanline begins with a filter type byte which has value None(0) which means no filtering method is applied.
+            So 0 is standard PNG filtering (this is the normal case for virtually all PNG files).
+            Values 1-255 are reserved for future use, but in practice, you'll almost never see anything other than 0
+
+            The actual filter type bytes (0-4) that appear at the beginning of each scanline are determined during the encoding process and can vary from line to line within the same image, 
+            but the filter method in the IHDR is just indicating which filtering system is being used overall.
+         */
+
+        let chunk= ihdr_chunk.unwrap();
+
+        let width = chunk.get_width() as usize;
+        let height = chunk.get_height() as usize;
+
+        let bytes_per_pixel = match chunk.get_color_type() {
+            2 => 3, // Truecolor: RGB
+            3 => 1, // Indexed: Palette index
+            _ => {        
+                let new_inflated_data: InflatedData = InflatedData {
+                    size: 0 as c_ulong,  // Convert usize to u32
+                    data: ptr::null_mut(),  // Get raw pointer from Vec
+                };
+
+                return Box::into_raw(Box::new(new_inflated_data));
+            } 
+        };
+
+        let row_stride: usize;
+
+        let data_ptr: *mut u8;
+        let data_size: usize;
+
+        let data_slice: &[u8];
+
+        /*
+            place 1/2
+            Declare return value her
+         */
+        let filtered_data_size = width * height * bytes_per_pixel;
+        let mut filtered_data_vec: Vec<u8> = Vec::with_capacity(filtered_data_size);
+        
+        unsafe {            
+            data_ptr = (*inflated_data).data;
+            data_size = (*inflated_data).size as usize;
+            data_slice = std::slice::from_raw_parts(data_ptr, data_size);
+            row_stride = (width * bytes_per_pixel) + 1;
+
+            for row in 0..height {
+                let row_start = row * row_stride;
+                let row_end = row_start + row_stride;
+            
+                if row_end <= data_slice.len() {
+                    let row_data = &data_slice[row_start..row_end];
+                
+                    // First byte is filter type
+                    let filter_type = row_data[0];
+
+                    if filter_type == 0 {        
+                    }
+                
+                    // Process pixel data (skip first byte which is filter type)
+                    for (pixel_idx, pixel_chunk) in row_data[1..].chunks_exact(bytes_per_pixel).enumerate() {
+                        let r = pixel_chunk[0];
+                        let g = pixel_chunk[1]; 
+                        let b = pixel_chunk[2];
+
+                        filtered_data_vec.push(r);
+                        filtered_data_vec.push(g);
+                        filtered_data_vec.push(b);
+
+                        // Process RGB values as needed
+                        //println!("Row {}, Pixel {}: RGB({}, {}, {})", row + 1, pixel_idx + 1, r, g, b);
+
+                        /*  
+                            place 2/2
+                            initializze the returned value here...                            
+                         */
+                    }
+                } else {
+                    eprintln!("Png::remove_filter_bytes_from_inflated_data() Error: row {} extends beyond available data", row);
+
+                    let new_inflated_data: InflatedData = InflatedData {
+                        size: 0 as c_ulong,  // Convert usize to u32
+                        data: ptr::null_mut(),  // Get raw pointer from Vec
+                    };
+
+                    return Box::into_raw(Box::new(new_inflated_data));                    
+                }
+            }
+        }
+
+        // Convert Vec to raw pointer for return
+        let filtered_data_ptr = filtered_data_vec.as_mut_ptr();
+        let filtered_size = filtered_data_vec.len();
+
+        // Prevent Vec from deallocating the memory when it goes out of scope
+        std::mem::forget(filtered_data_vec);
+
+        let new_inflated_data: InflatedData = InflatedData {
+            size: filtered_size as c_ulong,  // Convert usize to u32
+            data: filtered_data_ptr,        // Get raw pointer from Vec
+        };
+
+        return Box::into_raw(Box::new(new_inflated_data));
     }
 
     /// Traverses and prints metadata for all chunks in the PNG file.
