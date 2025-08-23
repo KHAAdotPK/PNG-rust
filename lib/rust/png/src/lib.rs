@@ -12,6 +12,7 @@ pub use png_core::*;
 
 use std::{fs::File, io::Write, collections::LinkedList, path::Path, ptr}; 
 use libc::{c_uchar, c_ulong, c_uint};
+use Numrs::{dimensions::Dimensions, collective::Collective, num::Tensor};
 
 #[link(name = "png", kind = "dylib")]
 /* Native function call */
@@ -773,6 +774,47 @@ impl Png {
 
         return Box::into_raw(Box::new(new_inflated_data));
     }
+
+    /**
+     * Applies PNG filter bytes to raw pixel data and prepares it for compression into IDAT chunks.
+     * 
+     * This method processes raw pixel data by adding a filter type byte at the beginning
+     * of each scanline. The filter type for all scanlines is set to 0 (None), meaning
+     * the pixel data is stored raw without any filtering. This data is then ready to be
+     * compressed and stored in IDAT chunks of a PNG file.
+     * 
+     * # PNG Filtering Context
+     * PNG images use a filtering system where each scanline (row) begins with a filter
+     * type byte (0-4), even if the chosen method is "None" (0). The IHDR's filter method
+     * (0) indicates adaptive filtering was allowed, but the filter byte itself is always
+     * present for each row in the IDAT data.
+     * 
+     * # Parameters
+     * * `raw_pixel_data` - Raw pointer to InflatedData containing unfiltered pixel data
+     * 
+     * # Returns
+     * * `*mut InflatedData` - Boxed pointer to new InflatedData containing the original
+     *   pixel data now prepended with a filter byte (0x00) for each scanline.
+     * 
+     * # Supported Color Types
+     * * Color type 2: Truecolor RGB (3 bytes per pixel)
+     * * Color type 3: Indexed color (1 byte per pixel)
+     * 
+     * # Safety
+     * This function uses unsafe code to dereference raw pointers and create slices from
+     * raw memory. The caller must ensure the raw_pixel_data pointer is valid and points
+     * to properly initialized InflatedData containing valid pixel data.
+     * 
+     * # Error Handling
+     * Returns InflatedData with null pointer and size 0 if:
+     * - IHDR chunk is missing or invalid
+     * - Unsupported color type
+     * - Input data size doesn't match expected pixel data dimensions
+     * - Memory allocation fails
+     */
+    pub fn add_filter_bytes_to_inflated_data(&self, inflated_data: &mut Box<Collective<u8>>) {
+
+    } 
 
     /// Traverses and prints metadata for all chunks in the PNG file.
     ///
