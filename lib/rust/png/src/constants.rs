@@ -19,3 +19,4 @@ pub const PNG_IEND_TYPE_SIGNATURE: [u8; LENGTH_OF_TYPE_FIELD] = [0x49, 0x45, 0x4
 pub const PNG_IDAT_TYPE_SIGNATURE: [u8; LENGTH_OF_TYPE_FIELD] = [0x49, 0x44, 0x41, 0x54];
 
 pub const PNG_OUTPUT_FILE_SUFFIX: &str = "out";
+pub const PNG_FILE_EXTENSION: &str = ".png";

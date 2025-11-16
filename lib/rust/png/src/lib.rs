@@ -87,7 +87,12 @@ impl DeflatedData {
     ///
     /// Note: Returns 0 if the data has been freed or was never allocated.
     pub fn len(&self) -> c_ulong {
-        self.size        
+
+        /*if self.data.is_null() {
+            return 0;
+        }*/
+
+        self.size                
     }
 }
 
@@ -1240,7 +1245,7 @@ pub fn create_png_from_boxed_defalted_data(width: u32, height: u32, inflated_dat
 
         let mut size = 0;
 
-        //  Setting up capacity fo all PNG chunks namely PNG-Signature + IHDR + IDAT + IEND
+        //  Setting up capacity for all PNG chunks namely PNG-Signature + IHDR + IDAT + IEND
         ////////////////////////////////////////////////////////////////////////////////////////////////
         // 1. Add PNG signature
         size = size + constants::LENGTH_OF_SIGNATURE;
@@ -1423,6 +1428,178 @@ pub fn create_png_from_boxed_defalted_data(width: u32, height: u32, inflated_dat
     }
 
     //None
+}
+
+pub fn create_png_from_png_files(block_file_names: &Vec<String>) -> Option<Png> {
+
+    println! ("block_file_names = {}", block_file_names.len());
+
+    let mut path: &Path;
+
+    for i in 0..block_file_names.len() {
+
+        //println! ("block_file_names[{}].as_str() = {}", i, block_file_names[i]);
+
+        path = Path::new(&block_file_names[i]);
+
+        println! ("block_file_names[{}].as_str() = {}", i, path.display().to_string());
+    }
+
+    None
+}
+
+pub fn create_png_from_collective<T> (collective: &Box<Collective<T>>, output_file_path: &Path) -> Option<Png> where T: Clone + Copy +Default {
+
+    println! ("{}", collective.data.as_ref().unwrap().len());
+    println! ("{}", collective.shape.as_ref().unwrap().get_rows());
+    println! ("{}", collective.shape.as_ref().unwrap().get_columns());
+
+    // Canculate channels
+    println! ("{}", collective.shape.as_ref().unwrap().get_rows() as usize * collective.shape.as_ref().unwrap().get_columns() as usize);
+
+    let channels = collective.data.as_ref().unwrap().len() / ((collective.shape.as_ref().unwrap().get_rows() as usize) * (collective.shape.as_ref().unwrap().get_columns() as usize));
+
+    println! ("Channels = {}", channels);
+
+    // We need to add filter bytes at the begiing of each lines. 
+    // Total of such filter bytes that will be get included will be equal to collective.shape.as_ref().unwrap().get_rows() - 1
+    //let filter_bytes = collective.shape.as_ref().unwrap().get_rows() as usize - 1;
+    // We need to allocate new place all of the data 
+    let mut new_data: Vec<T> = Vec::<T>::with_capacity(collective.data.as_ref().unwrap().len() + (collective.shape.as_ref().unwrap().get_rows() as usize));
+    // But i am gettng 0 here
+    // println! ("-> new_data.len() = {}", new_data.len());
+    // We need to add filter bytes at the begiing of each lines
+    /*for i in 0..collective.shape.as_ref().unwrap().get_rows() {
+        new_data.push(0);
+    }
+    // We need to copy the data
+    new_data.extend_from_slice(collective.data.as_ref().unwrap());
+    // We need to copy the data
+    new_data.extend_from_slice(collective.data.as_ref().unwrap());*/
+
+    for i in 0..collective.shape.as_ref().unwrap().get_rows() as usize {
+        //new_data[i*((collective.shape.as_ref().unwrap().get_columns() as usize)*channels + 0)] = 0;
+        new_data.push(T::default());
+
+        let row_start = i * (collective.shape.as_ref().unwrap().get_columns() as usize) * channels;
+        let row_end = row_start + (collective.shape.as_ref().unwrap().get_columns() as usize) * channels;
+        let row_data = &collective.data.as_ref().unwrap()[row_start..row_end];
+        new_data.extend_from_slice(row_data);
+    }
+
+    let dfdata: *mut DeflatedData;
+
+    unsafe {
+             
+       dfdata = de_flate(new_data.as_ptr() as *const u8, new_data.len() as usize); 
+    }
+
+    // Convert to reference for safer access
+    unsafe {
+        if let Some(df_ref) = dfdata.as_ref() {
+            println!("{}", df_ref.len());
+            //df_ref.some_method();
+        }
+    }
+    
+    // println! ("-> new_data.len() = {}", new_data.len());
+
+    //  Setting up capacity for all PNG chunks namely PNG-Signature + IHDR + IDAT + IEND
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    let mut size = 0;
+        
+    // 1. Add PNG signature
+    size = size + constants::LENGTH_OF_SIGNATURE;
+
+    // 2. Add Chunk size for IHDR
+    size = size + constants::LENGTH_OF_THREE_FIELDS;        
+    size = size + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize };
+
+    // 3. Add Chunk size for IDAT
+    size = size + constants::LENGTH_OF_THREE_FIELDS;    
+    unsafe {
+        if let Some(df_ref) = dfdata.as_ref() {
+
+            size = size + df_ref.len() as usize;            
+        }
+    }
+
+    // 4. Add Chunk size for IEND
+    size = size + constants::LENGTH_OF_THREE_FIELDS; // No data, length must be set to zero
+
+    // Create a vector with the appropriate capacity
+    let mut buffer: Vec<u8> = Vec::with_capacity(size);
+
+    // Start of PNG Signature
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    // 1. Add PNG signature        
+    buffer.extend_from_slice(&constants::PNG_SIGNATURE);
+
+    // Start of IHDR Chunk
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    // 2. Add IHDR chunk
+    // 2.1 Add IHDR length (4 bytes) - Length of the IHDR data (13 bytes)
+    //let ihdr_length: u32 = constants::LENGTH_OF_IHDR_DATA; // IHDR data is always 13 bytes
+    //buffer.extend_from_slice(&ihdr_length.to_be_bytes());
+    buffer.extend_from_slice(&constants::LENGTH_OF_IHDR_DATA);
+
+    // 2.2 Add IHDR type (4 bytes)
+    //buffer.extend_from_slice(b"IHDR"); // Or use your constants::PNG_IHDR_TYPE_SIGNATURE
+    buffer.extend_from_slice(&constants::PNG_IHDR_TYPE_SIGNATURE);
+
+    // 2.3 Add actual IHDR data (13 bytes)
+    // Width (4 bytes)
+    buffer.extend_from_slice(&(collective.shape.as_ref().unwrap().get_columns() as u32).to_be_bytes()); // (collective.shape.as_ref().unwrap().get_columns() as u32).to_be_bytes()
+    // Height (4 bytes)
+    buffer.extend_from_slice(&(collective.shape.as_ref().unwrap().get_rows() as u32).to_be_bytes()); // (collective.shape.as_ref().unwrap().get_rows() as u32).to_be_bytes()
+    // Bit depth (1 byte), rest of data for IHDR
+    buffer.extend_from_slice(&constants::IHDR_DATA_FOR_UNCOMPRESSED_FILE);
+
+    let mut crc: u32 = unsafe { update_crc(0xfffffff, buffer.as_ptr().add(constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) } ) } ^ 0xffffffff;
+
+    buffer.extend_from_slice(&crc.to_be_bytes());
+
+    // Start of IDAT Chunk
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+
+    let idat_length: u32 = (unsafe {
+        if let Some(df_ref) = dfdata.as_ref() {
+
+            df_ref.len() as u32           
+        } else {
+            0
+        }
+    });
+    buffer.extend_from_slice(&idat_length.to_be_bytes());  
+    buffer.extend_from_slice(&constants::PNG_IDAT_TYPE_SIGNATURE);  
+    //buffer.extend_from_slice(&(*inflated_data).data);  
+    unsafe {
+                  
+        buffer.extend_from_slice(std::slice::from_raw_parts( (*dfdata).data, (*dfdata).len() as usize));
+    }
+    crc = unsafe { update_crc (0xFFFFFFFF, buffer.as_ptr().add( constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD  + unsafe { big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) } as usize + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + idat_length /*as usize*/) } ^ 0xffffffff;    
+    buffer.extend_from_slice(&crc.to_be_bytes());
+
+    // Start of IEND Chunk
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // 1. Add IEND length (4 bytes) - Length of the IEND data (0 bytes)
+    buffer.extend_from_slice(&constants::LENGTH_OF_IEND_DATA);
+
+    // 2. Add IEND type (4 bytes)    
+    buffer.extend_from_slice(&constants::PNG_IEND_TYPE_SIGNATURE);
+
+    // 3. Add actual IEND data (0 bytes)
+    // No data for IEND
+
+    // 4. Add CRC (4 bytes)        
+    crc = unsafe { update_crc (0xFFFFFFFF, buffer.as_ptr().add((constants::LENGTH_OF_SIGNATURE + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + unsafe {big_endian_read_u32(constants::LENGTH_OF_IHDR_DATA.as_ptr()) as usize } + constants::LENGTH_OF_CRC_FIELD + constants::LENGTH_OF_LENGTH_FIELD + constants::LENGTH_OF_TYPE_FIELD + idat_length  as usize + constants::LENGTH_OF_CRC_FIELD) + constants::LENGTH_OF_LENGTH_FIELD), (constants::LENGTH_OF_TYPE_FIELD as u32) + unsafe { big_endian_read_u32(constants::LENGTH_OF_IEND_DATA.as_ptr()) }) } ^ 0xffffffff;        
+    buffer.extend_from_slice(&crc.to_be_bytes()); 
+
+    // Create and return a new Png instance
+    let png = Png::new(buffer);
+
+    return Some(png);    
 }
 
 /// Modifies PNG pixel data for testing and validation purposes.
