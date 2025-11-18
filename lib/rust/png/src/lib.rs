@@ -7,6 +7,7 @@
 pub mod constants;
 pub mod png_core;
 pub mod sundry;
+pub mod images;
 
 
 
