@@ -18,6 +18,7 @@ use Numrs::{dimensions::Dimensions, collective::Collective, num::Tensor};
 // Reference modules that are siblings in the same directory
 //use crate::constants::LENGTH_OF_SIGNATURE;
 
+use crate::constants::{PNG_TRUE_COLOR_TYPE, PNG_TRUE_COLOR_BIT_DEPTH};
 
 //pub use crate::lib::*;
 
@@ -1893,70 +1894,71 @@ pub fn modify_png_pixel_data (pixels: *mut InflatedData, data: Vec<u8>, width: u
 
     // Check if we're dealing with RGB truecolor format with 8-bit depth
     // Color type 2 = RGB (3 bytes per pixel), bit depth 8 = 8 bits per color component
-    if color_type == 2 && bit_depth == 8 {
+    if color_type == PNG_TRUE_COLOR_TYPE && bit_depth == PNG_TRUE_COLOR_BIT_DEPTH {
 
         unsafe {
 
             // Counter to track current row being processed (for debugging purposes)
-            let mut idx = 0;
+                /*let mut idx = 0;*/
 
             // Iterate through each row (scanline) of the image
             // PNG stores image data as horizontal scanlines from top to bottom
             for i in (0..height) {
 
-                // Iterate through each pixel in the current scanline
-                // j starts at 1 because byte 0 of each scanline is the filter byte
-                // Each pixel is 3 bytes (RGB), so we step by 3
-                // Total scanline length = width * 3 bytes + 1 filter byte
-                /*J needs to originate at 1, becuase 0 byte of each line is always 0 in PNG file*/
-                for j in (1..((width*3 + 1) as usize)).step_by(3) {
+                // Update row counter (idx will equal current row + 1)
+                // This serves as a debugging aid to verify we're processing all rows                
+                /*idx needs to originate at 1, this working perfectly*/
+                    /*idx = i + 1;*/
 
-                    // Check if the filter byte (first byte of scanline) is 0x00
-                    // Filter byte 0x00 means "None" - no filtering applied to this scanline
-                    // Calculate scanline start: row_index * (width * 3_bytes_per_pixel + 1_filter_byte)
-                    /*first byte must be 0x00 and this is working as well because idx is same as height of the image*/
-                    if *(*pixels).data.add((i*(width*3 + 1)) as usize) == 0x00 /*&& *(*dat).data.add(1) == 0x00 && *(*dat).data.add(2) == 0x00*/ {
+                // Check if the filter byte (first byte of scanline) is 0x00
+                // Filter byte 0x00 means "None" - no filtering applied to this scanline
+                // Calculate scanline start: row_index * (width * 3_bytes_per_pixel + 1_filter_byte)
+                /*first byte must be 0x00 and this is working as well because idx is same as height of the image*/
+                if *(*pixels).data.add((i*(width*3 + 1)) as usize) == 0x00 /*&& *(*dat).data.add(1) == 0x00 && *(*dat).data.add(2) == 0x00*/ {
 
-                        // Update row counter (idx will equal current row + 1)
-                        // This serves as a debugging aid to verify we're processing all rows                
-                        /*idx needs to originate at 1, this working perfectly*/
-                        idx = i + 1;
+                    // Iterate through each pixel in the current scanline
+                    // j starts at 1 because byte 0 of each scanline is the filter byte
+                    // Each pixel is 3 bytes (RGB), so we step by 3
+                    // Total scanline length = width * 3 bytes + 1 filter byte
+                    /*J needs to originate at 1, becuase 0 byte of each line is always 0 in PNG file*/
+                    for j in (1..((width*3 + 1) as usize)).step_by(data.len()) { 
 
                         // Note: The commented condition would check if current pixel is non-zero
                         // Currently we modify ALL pixels regardless of their original values
-                        /*if *(*dat).data.add((i*(width + 1) + (j + 0)) as usize) != 0x00 && *(*dat).data.add((i*(width + 1) + (j + 1)) as usize) != 0x00 && *(*dat).data.add((i*(width + 1) + (j + 2)) as usize) != 0x00*/ {
+                        /*if *(*dat).data.add((i*(width + 1) + (j + 0)) as usize) != 0x00 && *(*dat).data.add((i*(width + 1) + (j + 1)) as usize) != 0x00 && *(*dat).data.add((i*(width + 1) + (j + 2)) as usize) != 0x00*/ 
 
-                            // Modify the RGB components of the current pixel
-                            // Calculate pixel address: scanline_start + pixel_offset_in_scanline
+                        // Modify the RGB components of the current pixel
+                        // Calculate pixel address: scanline_start + pixel_offset_in_scanline
 
                             
-                            // Set Red component to data[0] (typically 0xFF for pure red)
-                            *(*pixels).data.add(((i*(width*3 + 1)) as usize + (j + 0))) = data[0] ; // R  
-                            // Set Green component to data[1] (typically 0x00 for pure red)
-                            *(*pixels).data.add(((i*(width*3 + 1)) as usize + (j + 1))) = data[1];  // G
-                            // Set Blue component to data[2] (typically 0x00 for pure red)
-                            *(*pixels).data.add(((i*(width*3 + 1)) as usize + (j + 2))) = data[2];  // B
-                        }
-                    }                                    
-                }
+                        // Set Red component to data[0] (typically 0xFF for pure red)
+                            //*(*pixels).data.add(((i*(width*3 + 1)) as usize + (j + 0))) = data[0] ; // R  
+                        // Set Green component to data[1] (typically 0x00 for pure red)
+                            //*(*pixels).data.add(((i*(width*3 + 1)) as usize + (j + 1))) = data[1];  // G
+                        // Set Blue component to data[2] (typically 0x00 for pure red)
+                            //*(*pixels).data.add(((i*(width*3 + 1)) as usize + (j + 2))) = data[2];  // B
+
+                        for k in 0..data.len() {
+
+                            *(*pixels).data.add(((i*(width*3 + 1)) as usize + (j + k))) = data[k] ; 
+                        } 
+                    }                
+                } else {
+
+                    //todo!("NOT YET IMPLEMENTED");
+                }                
             }
 
-            // Debug output to verify we processed all rows correctly
-            // idx should equal height if all scanlines were processed
-            /*The idx value and the height are same which is 344 and this the actaul height of the image I have checked it.*/
-            //println! ("-------------->>>>>>> idx = {}, height = {}", idx, height);
-
-            /*Return the modified pixel data}*/
-
-            // Note: Function completes pixel modification here
-            // The modified pixel data remains in memory for later use
-        }    
+        }
     }
+
+        /*println! ("Verbose modify_png_pixel_data(): scanline updated = {}", idx);*/
 
     // Return the pointer to the modified inflated data
     // The same pointer is returned but the data it points to has been modified
     pixels
-} 
+}
+
 
 
 

@@ -20,3 +20,8 @@ pub const PNG_IDAT_TYPE_SIGNATURE: [u8; LENGTH_OF_TYPE_FIELD] = [0x49, 0x44, 0x4
 
 pub const PNG_OUTPUT_FILE_SUFFIX: &str = "out";
 pub const PNG_FILE_EXTENSION: &str = ".png";
+
+pub const PNG_IHDR_CHUNK: &str = "IHDR";
+
+pub const PNG_TRUE_COLOR_TYPE: u8 = 2;
+pub const PNG_TRUE_COLOR_BIT_DEPTH: u8 = 8;
