@@ -228,12 +228,67 @@ macro_rules! image_block_slice_start_vertical {
    Random block number to line number (image stride)
 */
 #[macro_export]
+macro_rules! image_block_slice_start_vertical_experimental_old {
+    ($block_number: expr, $channels: expr, $number_of_blocks_per_line: expr, $overlapping_pixels_per_column: expr, $block_dims: expr) => {
+        (((($block_number - 1) as f64 / $number_of_blocks_per_line) as usize)
+            * ($block_dims.get_height()
+                - ($overlapping_pixels_per_column / $number_of_blocks_per_line)) as usize)
+            as f64
+    };
+}
+
+/// Calculates the **starting (top) row index** (inclusive / 0-based pixel coordinate)
+/// of a given block when performing **vertical** slicing of an image with overlapping blocks.
+///
+/// This macro is the counterpart to `image_block_slice_end_vertical_experimental!`  
+/// and is typically used together to define the vertical window of each tile/block.
+///
+/// # Formula explanation
+///
+/// For block number `N` (1-based):
+///
+/// 1. row_index       = floor( (N-1) / blocks_per_line )
+/// 2. overlap_step    = overlapping_pixels_per_column / blocks_per_line
+/// 3. effective_height = block_height - overlap_step
+/// 4. start_y         = row_index × effective_height
+///
+/// Result is **floored** to integer pixel coordinate.
+///
+/// # Arguments
+/// * `$block_number`               - 1-based block index (flat numbering, row-major order)
+/// * `$number_of_blocks_per_line`  - number of blocks in one horizontal row
+/// * `$overlapping_pixels_per_column` - total vertical overlap (in pixels) between consecutive block rows
+/// * `$block_dims`                 - object/struct providing `.get_height()` → block height in pixels
+///
+/// # Returns
+/// `usize`-compatible **inclusive** top row index (0-based pixel y-coordinate)
+/// where this block begins.
+///
+/// # Example
+/// ```
+/// // 256×256 image, 64×64 blocks, 16 px vertical overlap, 4 blocks per row
+/// let start_y = image_block_slice_start_vertical_experimental!(5, 4, 16, dims);
+/// // → block 5 is first block of second row (row 1)
+/// //   effective step = 64 - (16/4) = 64 - 4 = 60
+/// //   start_y = 1 × 60 = 60
+/// ```
+///
+/// # Note
+/// The overlap compensation (`overlapping_pixels_per_column / blocks_per_line`)  
+/// is a simple heuristic. It assumes uniform distribution of overlap — which is  
+/// correct only in certain regular tiling patterns.  
+/// **Experimental**: verify the resulting windows visually / numerically, especially  
+/// near the image borders or with unusual overlap values.
+///
+/// See also: `image_block_slice_end_vertical_experimental!`
+#[macro_export]
 macro_rules! image_block_slice_start_vertical_experimental {
-    ($block_number: expr, $channels: expr, $image_dims: expr, $block_dims: expr) => {
-        ((($block_number - 0) as usize)
-            / ($image_dims.get_width() / ($block_dims.get_width())) as usize)
-            /*/ (($image_dims.get_width()) as usize / ($block_dims.get_width() as usize))*/
-            * ($block_dims.get_height()) as usize
+    ($block_number: expr, $number_of_blocks_per_line: expr, $overlapping_pixels_per_column: expr, $block_dims: expr) => {
+        ((($block_number - 1) as f64 / $number_of_blocks_per_line).floor()
+            * ($block_dims.get_height()
+                - ($overlapping_pixels_per_column / $number_of_blocks_per_line))
+                .floor())
+        .floor()
     };
 }
 
@@ -242,6 +297,57 @@ macro_rules! image_block_slice_end_vertical {
     ($block_number: expr, $image_block_width: expr, $image_channels: expr) => {
         ((($block_number as usize) * ($image_block_width as usize) * ($image_channels as usize))
             - 0) as f64
+    };
+}
+
+/// Calculates the **ending (bottom) row index** (inclusive) of a given block
+/// when performing **vertical** slicing of an image with overlapping blocks.
+///
+/// This macro is typically used in tiled / sliding-window image processing
+/// where blocks are arranged in a grid and may overlap both horizontally
+/// and vertically.
+///
+/// # Formula explanation
+///
+/// For block number `N` (1-based):
+///
+/// 1. row = floor( (N-1) / blocks_per_line )
+/// 2. vertical overlap compensation = overlapping_pixels / blocks_per_line
+/// 3. start_y of the row = row × (block_height - vertical_overlap_compensation)
+/// 4. end_y   = start_y + block_height - 1
+///
+/// # Arguments
+/// * `$block_number`               - 1-based block index (usually from a flat → 2D mapping)
+/// * `$number_of_blocks_per_line`  - how many blocks fit in one horizontal row
+/// * `$overlapping_pixels_per_column` - number of **vertical** overlapping pixels between consecutive rows
+/// * `$block_dims`                 - object/struct with `.get_height()` method returning block height (in pixels)
+///
+/// # Returns
+/// `usize`-compatible **inclusive** bottom row index (0-based pixel coordinate)
+/// of the requested block.
+///
+/// # Example
+/// ```
+/// // 256×256 image, 64×64 blocks, 16 px vertical overlap, 4 blocks per row
+/// let end_y = image_block_slice_end_vertical_experimental!(5, 4, 16, dims);
+/// // → block 5 is in row 1 → end_y should be around 64 + 64 - 1 - 4 = 123
+/// ```
+///
+/// # Note
+/// This is marked **experimental** — the vertical overlap compensation formula
+/// (`overlapping_pixels / blocks_per_line`) is heuristic and may not be mathematically
+/// ideal in all tiling schemes. Use with caution and verify visually / numerically.
+#[macro_export]
+macro_rules! image_block_slice_end_vertical_experimental {
+    ($block_number: expr, $number_of_blocks_per_line: expr, $overlapping_pixels_per_column: expr, $block_dims: expr) => {
+        (((($block_number - 1) as f64 / $number_of_blocks_per_line).floor()
+            * ($block_dims.get_height()
+                - ($overlapping_pixels_per_column / $number_of_blocks_per_line))
+                .floor())
+        .floor()
+            + $block_dims.get_height()
+            - 1.0)
+            .floor()
     };
 }
 
