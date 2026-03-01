@@ -237,6 +237,26 @@ macro_rules! image_block_slice_start_vertical_experimental_old {
     };
 }
 
+#[macro_export]
+macro_rules! zero_based_block_number_horizontal_experimental {
+    ($block_number: expr, $number_of_blocks_per_line: expr) => {
+        (($block_number - 1) as f64 % $number_of_blocks_per_line)
+    };
+}
+
+#[macro_export]
+macro_rules! image_block_slice_start_horizontal_experimental {
+    ($block_number: expr, $number_of_blocks_per_line: expr, /*$channels: expr,*/ $overlapping_pixels_per_line: expr, $block_dims: expr) => {
+        zero_based_block_number_horizontal_experimental!($block_number, $number_of_blocks_per_line)
+            * $block_dims.get_width().floor()
+            - ($overlapping_pixels_per_line / $number_of_blocks_per_line).floor()
+                * zero_based_block_number_horizontal_experimental!(
+                    $block_number,
+                    $number_of_blocks_per_line
+                )
+    };
+}
+
 /// Calculates the **starting (top) row index** (inclusive / 0-based pixel coordinate)
 /// of a given block when performing **vertical** slicing of an image with overlapping blocks.
 ///
@@ -289,6 +309,20 @@ macro_rules! image_block_slice_start_vertical_experimental {
                 - ($overlapping_pixels_per_column / $number_of_blocks_per_line))
                 .floor())
         .floor()
+    };
+}
+
+#[macro_export]
+macro_rules! image_block_slice_end_horizontal_experimental {
+    ($block_number: expr, $number_of_blocks_per_line: expr, $channels: expr, $overlapping_pixels_per_line: expr, $block_dims: expr) => {
+        ((($block_number - 1) as f64 % $number_of_blocks_per_line) as f64
+            * $block_dims.get_width().floor()
+            - ($overlapping_pixels_per_line / $number_of_blocks_per_line).floor()
+                * (($block_number - 1) as f64))
+            * $channels as f64
+            + $block_dims.get_width().floor()
+            - ($overlapping_pixels_per_line / $number_of_blocks_per_line).floor()
+        /*.floor()*/
     };
 }
 
@@ -370,5 +404,12 @@ macro_rules! image_block_height_vertical {
 macro_rules! image_block_size_vertical {
     ($image_tensor: expr) => {
         image_block_width_vertical!($image_tensor) * image_block_height_vertical!($image_tensor)
+    };
+}
+
+#[macro_export]
+macro_rules! block_number_relative_to_row {
+    ($block_number: expr, $number_of_blocks_per_line: expr) => {
+        ($block_number - 1) % $number_of_blocks_per_line + 1
     };
 }
