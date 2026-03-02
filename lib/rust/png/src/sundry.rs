@@ -154,6 +154,13 @@ macro_rules! image_block_height {
     };
 }
 
+#[macro_export]
+macro_rules! image_block_height_experimental {
+    ($input_len: expr, $channels: expr) => {
+        JEPA_IMAGE_BLOCK_HEIGHT
+    };
+}
+
 /// Calculates the width of an image block based on input dimensions and JEPA configuration.
 ///
 /// This macro computes the width of individual image blocks by:
@@ -188,6 +195,13 @@ macro_rules! image_block_width {
     };
 }
 
+#[macro_export]
+macro_rules! image_block_width_experimental {
+    ($input_len: expr, $channels: expr) => {
+        JEPA_IMAGE_BLOCK_WIDTH
+    };
+}
+
 /// Calculates the size of an image block based on input dimensions and JEPA configuration.
 ///
 /// This macro computes the size of individual image blocks by:
@@ -210,6 +224,13 @@ macro_rules! image_block_width {
 macro_rules! image_block_size {
     ($input_len: expr, $channels: expr) => {
         ($input_len / $channels) / (JEPA_NUMBER_OF_CONTEXT_BLOCKS + JEPA_NUMBER_OF_TARGET_BLOCKS)
+    };
+}
+
+#[macro_export]
+macro_rules! image_block_size_experimental {
+    ($input_len: expr, $channels: expr) => {
+        (JEPA_IMAGE_BLOCK_WIDTH * JEPA_IMAGE_BLOCK_HEIGHT) as usize
     };
 }
 
