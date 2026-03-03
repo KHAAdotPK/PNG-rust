@@ -145,7 +145,7 @@ macro_rules! image_block_slice_end {
 /// ```
 // Macro annotated with `#[macro_export]` will be exported at the root of the crate instead of the module where it is defined
 #[macro_export]
-macro_rules! image_block_height {
+macro_rules! image_block_height_aspect_ratio {
     ($input_len: expr, $channels: expr) => {
         (($input_len / $channels) as f64
             / (JEPA_NUMBER_OF_CONTEXT_BLOCKS + JEPA_NUMBER_OF_TARGET_BLOCKS) as f64
@@ -155,7 +155,7 @@ macro_rules! image_block_height {
 }
 
 #[macro_export]
-macro_rules! image_block_height_experimental {
+macro_rules! image_block_height_tiled {
     ($input_len: expr, $channels: expr) => {
         JEPA_IMAGE_BLOCK_HEIGHT
     };
@@ -185,7 +185,7 @@ macro_rules! image_block_height_experimental {
 /// ```
 // Macro annotated with `#[macro_export]` will be exported at the root of the crate instead of the module where it is defined
 #[macro_export]
-macro_rules! image_block_width {
+macro_rules! image_block_width_aspect_ratio {
     ($input_len: expr, $channels: expr) => {
         (($input_len / $channels) as f64
             / (JEPA_NUMBER_OF_CONTEXT_BLOCKS + JEPA_NUMBER_OF_TARGET_BLOCKS) as f64
@@ -196,7 +196,7 @@ macro_rules! image_block_width {
 }
 
 #[macro_export]
-macro_rules! image_block_width_experimental {
+macro_rules! image_block_width_tiled {
     ($input_len: expr, $channels: expr) => {
         JEPA_IMAGE_BLOCK_WIDTH
     };
@@ -221,14 +221,14 @@ macro_rules! image_block_width_experimental {
 /// ```
 // Macro annotated with `#[macro_export]` will be exported at the root of the crate instead of the module where it is defined
 #[macro_export]
-macro_rules! image_block_size {
+macro_rules! image_block_size_aspect_ratio {
     ($input_len: expr, $channels: expr) => {
         ($input_len / $channels) / (JEPA_NUMBER_OF_CONTEXT_BLOCKS + JEPA_NUMBER_OF_TARGET_BLOCKS)
     };
 }
 
 #[macro_export]
-macro_rules! image_block_size_experimental {
+macro_rules! image_block_size_tiled {
     ($input_len: expr, $channels: expr) => {
         (JEPA_IMAGE_BLOCK_WIDTH * JEPA_IMAGE_BLOCK_HEIGHT) as usize
     };
