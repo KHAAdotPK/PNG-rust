@@ -231,6 +231,26 @@ impl Chunk {
         self.data[9]
     }
 
+    /// HELPER METHOD, WRAPPER FOR get_color_type()
+    /// Returns number of channels from IHDR chunk.
+    /// This method is used to determine the number of channels in the image.
+    /// It is based on the color type of the image.
+    ///
+    /// # Returns
+    /// The number of channels in the image.
+    ///
+    /// # Safety
+    /// - The color type must be a valid PNG color type.
+    /// - The color type must be one of the following: 0, 2, 3, 4, 6.
+    pub fn get_channels(&self) -> u8 {
+        match self.get_color_type() {
+            0 => 1,
+            2 | 3 | 4 => 3,
+            6 => 4,
+            _ => 0,
+        }
+    }
+
     /// Returns compression method from IHDR chunk.
     pub fn get_compression_method(&self) -> u8 {
         self.data[10]
